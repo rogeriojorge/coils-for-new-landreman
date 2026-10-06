@@ -1,0 +1,4 @@
+__pycache__/
+*.vtu
+*.vts
+.pytest_cache/
