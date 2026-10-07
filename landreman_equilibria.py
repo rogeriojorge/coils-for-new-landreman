@@ -31,9 +31,9 @@ def iota2_psi(x, eps):
 
 
 def iota2_surface(theta, zeta, eps, psi):
-    """Eqs. (2.9)-(2.10), (2.14): point on the surface psi. The field-line label alpha = 2 zeta - theta
+    """Eqs. (2.9)-(2.10), (2.14): point on the surface psi. The field-line label alpha = theta + 2 zeta
     untwists the iota = 2 winding, so theta is a poloidal angle (smooth, near-orthogonal grid)."""
-    alpha = 2 * zeta - theta
+    alpha = theta + 2 * zeta
     u, v = -eps / 2 + jnp.sqrt(psi) * jnp.cos(alpha), jnp.sqrt(psi) * jnp.sin(alpha)
     L = jnp.sqrt((1 + jnp.sqrt(1 - 4 * (u**2 + v**2))) / 2)
     c, s = jnp.cos(zeta), jnp.sin(zeta)
@@ -93,7 +93,7 @@ def boundary(surface, ntheta, nphi, newton_steps=30):
 
 
 def coil_field(surface, B, points, ntheta=256, nzeta=512):
-    """Exact field of all currents outside the plasma (the coils) at points inside it.
+    r"""Exact field of all currents outside the plasma (the coils) at points inside it.
 
     Virtual casing with the surface current K = n x B on the plasma boundary gives
     B_coils(x) = -(1/4 pi) \oint (n' x B') x (x - x') / |x - x'|^3 dA' for x inside. The integrand is
@@ -109,6 +109,22 @@ def coil_field(surface, B, points, ntheta=256, nzeta=512):
         d = x - r
         return -jnp.sum(jnp.cross(KdA, d) / jnp.linalg.norm(d, axis=1)[:, None]**3, axis=0) / (4 * jnp.pi)
     return jax.lax.map(one, points, batch_size=32)
+
+
+def boundary_normal_target(surface, B, ntheta=32, nphi=32, digits=10):
+    """Exact boundary points/normals and the coil normal field B_coils . n = -B_plasma . n there,
+    by on-surface virtual casing (singular quadrature of virtual_casing_jax), one field period."""
+    from virtual_casing_jax import VirtualCasingJAX
+    gamma, normal = boundary(surface, ntheta, nphi)
+    if jnp.sum(gamma * normal) > 0:  # virtual_casing_jax needs d/dtheta x d/dphi pointing inward
+        gamma, normal = boundary(lambda t, z: surface(-t, z), ntheta, nphi)
+    B_total = jax.vmap(jax.vmap(B))(gamma)
+    vc = VirtualCasingJAX()
+    vc.setup(digits, NFP, False, nphi, ntheta, jnp.moveaxis(gamma, -1, 0), nphi, ntheta, nphi, ntheta)
+    B_ext = jnp.moveaxis(vc.compute_external_B(jnp.moveaxis(B_total, -1, 0).reshape(3, -1), digits=digits,
+                                                    chunk_size=256, target_chunk_size=8)
+                         .reshape(3, nphi, ntheta), 0, -1)
+    return gamma, normal, jnp.sum(B_ext * normal, -1), jnp.linalg.norm(B_total, axis=-1)
 
 
 def fit_surface(surface, mpol, ntor, ntheta=64, nphi=64, **kwargs):

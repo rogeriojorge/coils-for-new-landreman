@@ -46,38 +46,66 @@ integrand is smooth and periodic in (θ, ζ), so the trapezoidal rule converges 
 and reaches machine precision away from the boundary. The scripts match the coil field to
 B_coils at half the minor radius (ψ = ψ_edge/4). They print an error bound for the target,
 taken from the same quadrature at 2/3 resolution. For ι = 2 the boundary label is untwisted
-(α = 2ζ − θ), which keeps the quadrature grid near-orthogonal. That reduces the cost by
+(α = θ + 2ζ), which keeps the quadrature grid near-orthogonal. That reduces the cost by
 more than an order of magnitude.
 
-**Coil optimization.** The coils start as circles and use stellarator symmetry and two
-field periods. The objective is the mean squared mismatch |B_coils,ESSOS − B_coils|²/|B|²
-on the target points, plus penalties on length, curvature, coil–coil and coil–plasma
-distance, and linking number (no winding). Gradients are exact (JAX). L-BFGS-B does the
-minimization, and the coil currents are free. Coil forces are reported but not penalized.
+**Boundary B·n.** The interior formula is singular on the boundary itself. There,
+`boundary_normal_target` uses the high-order on-surface virtual casing of
+[virtual_casing_jax](https://github.com/uwplasma/virtual_casing_jax) (6 digits). It gives
+the normal field the coils must supply on the exact plasma boundary.
+
+**Coil optimization.** The coils start as circles, centred on the elliptical axis for the
+sheared family, and use stellarator symmetry and two field periods. All gradients are exact
+(JAX), the coil currents are free, and L-BFGS-B does the minimization. The objective
+combines:
+
+| term | role |
+| --- | --- |
+| `field` | exact interior coil field: fixes the total coil current and the poloidal circulation |
+| `normal` | B·n on the exact boundary |
+| `length`, `curvature`, `msc` | maximum length, curvature and mean squared curvature |
+| `total_curvature` | ∫κ dl ≤ 3π: each loop adds 2π, so this prevents loops |
+| `arclength` | arclength variation, as in SIMSOPT's ArclengthVariation |
+| `coil_distance`, `surface_distance` | coil–coil (CurveCurveDistance) and coil–plasma distance |
+| `linking` | linking number: no winding |
+
+Coil forces are reported but not penalized.
 
 ## Results
 
-Default settings: major radius 1 m, |B| = 1 T on the axis, 6 coils per half period (24 in
-total), Fourier order 4, length ≤ 3.4 m, curvature ≤ 3 m⁻¹, 1000 L-BFGS-B iterations
-(about 70 s on a laptop CPU). |ΔB|/|B| is the mismatch with the exact coil field at the
-384 target points. The target error bound comes from the 2/3-resolution quadrature and
-bounds the error of the target itself from above.
+Defaults: major radius 1 m, |B| = 1 T on the axis, 6 coils per half period (24 in total),
+Fourier order 4, length ≤ 4 m, curvature ≤ 4 m⁻¹, total curvature ≤ 3π, 1000 iterations
+(about 100–170 s on a laptop CPU).
 
-| case | ι on axis | target error bound | mean / max \|ΔB\|/\|B\| | max curvature (m⁻¹) | mean force (N/m) |
-| --- | --- | --- | --- | --- | --- |
-| ι = 2, ε = 1/2 (`optimize_coils_iota2.py`) | 2 | 1.4e-8 | 2.2e-4 / 5.9e-4 | 3.00 | 9.4e4 |
-| sheared, case A (`CASE = "A"`) | 5.69 | 1.9e-15 | 3.3e-3 / 8.2e-3 | 3.10 | 8.6e4 |
-| sheared, case B (`CASE = "B"`) | 4.36 | 2.7e-10 | 1.6e-2 / 4.6e-2 | 4.63 | 8.8e5 |
+| case | ι on axis | target error bound | interior mean / max \|ΔB\|/\|B\| | boundary mean / max \|ΔB·n\|/\|B\| | max κ (m⁻¹) | mean force (N/m) |
+| --- | --- | --- | --- | --- | --- | --- |
+| ι = 2, ε = 1/2 | 2 | 1.4e-8 | 1.1e-4 / 3.1e-4 | 2.6e-4 / 1.3e-3 | 4.0 | 9.7e4 |
+| sheared, case A | 5.69 | 1.9e-15 | 3.0e-3 / 9.5e-3 | 7.8e-3 / 4.2e-2 | 4.4 | 7.9e4 |
+| sheared, case B | 4.36 | 2.7e-10 | 7.8e-2 / 1.5e-1 | 6.6e-2 / 3.8e-1 | 7.8 | 1.1e6 |
 
 ![iota = 2 coils](coils_iota2.png)
 ![sheared case A coils](coils_sheared_A.png)
 ![sheared case B coils](coils_sheared_B.png)
 
-All three equilibria have large rotational transform, so modular coils need strong
-three-dimensional shaping. The ι = 2 coils reach a sub-0.1% match but still form wide loops.
-Case B (strongly elliptical axis, ι ≈ 4.4) is not yet resolved at these engineering
-limits. Ways to improve it include more coils, a higher Fourier order, and a coil
-geometry that starts closer to the elliptical axis.
+**Parameter scan.** Five objective variants were run for each case, 500 iterations each:
+
+- Matching the boundary B·n alone leaves the total current free. The interior error then
+  grows to 19% (ι = 2), 370% (A) and 26% (B), so the interior field term is needed.
+- Relaxing length to 4 m and curvature to 4 m⁻¹ improves ι = 2 and A by 2–4×. These are
+  the defaults above.
+- The total-curvature cap holds wherever it is set. With a 1.25·2π cap, the field error grows
+  by about 25% (ι = 2) and only about 5% (A).
+- A stronger coil–coil distance term changes nothing.
+
+The ι = 2 coils have no closed loops, but they still bend sharply.
+
+**Case B.** No combination of weights, limits, coil count (6 or 8), Fourier order (4 or 6)
+or initial coil shape fixes case B. The cause is the equilibrium itself. The sheared family
+is built on confocal ellipses whose singular foci lie at (x, y) = (0, ±√ε). In case B the
+foci sit about 0.2 m inside the plasma's outer edge along the y axis, so |B| on the boundary
+varies from 0.9 T to 5 T. In case C it varies from 1 T to 11 T. Coils kept at a practical
+distance cannot reproduce that structure. Case A's foci are far from the plasma, and its
+|B| varies only from 0.9 T to 1.4 T.
 
 ## Reference
 

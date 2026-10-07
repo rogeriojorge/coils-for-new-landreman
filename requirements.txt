@@ -1,1 +1,2 @@
 essos @ git+https://github.com/uwplasma/ESSOS
+virtual-casing-jax
