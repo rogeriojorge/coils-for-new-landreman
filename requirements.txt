@@ -1,2 +1,2 @@
 essos @ git+https://github.com/uwplasma/ESSOS
-virtual-casing-jax
+virtual-casing-jax @ git+https://github.com/uwplasma/virtual_casing_jax@fix/left-handed-orientation

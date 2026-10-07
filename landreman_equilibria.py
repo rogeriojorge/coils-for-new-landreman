@@ -116,8 +116,6 @@ def boundary_normal_target(surface, B, ntheta=32, nphi=32, digits=10):
     by on-surface virtual casing (singular quadrature of virtual_casing_jax), one field period."""
     from virtual_casing_jax import VirtualCasingJAX
     gamma, normal = boundary(surface, ntheta, nphi)
-    if jnp.sum(gamma * normal) > 0:  # virtual_casing_jax needs d/dtheta x d/dphi pointing inward
-        gamma, normal = boundary(lambda t, z: surface(-t, z), ntheta, nphi)
     B_total = jax.vmap(jax.vmap(B))(gamma)
     vc = VirtualCasingJAX()
     vc.setup(digits, NFP, False, nphi, ntheta, jnp.moveaxis(gamma, -1, 0), nphi, ntheta, nphi, ntheta)
