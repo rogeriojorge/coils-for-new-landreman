@@ -139,9 +139,9 @@ Five objective variants per case, 500 iterations each, chose the defaults:
   [uwplasma/virtual_casing_jax#19](https://github.com/uwplasma/virtual_casing_jax/pull/19)
   fixes it; released in virtual-casing-jax 0.0.10.
 - **ESSOS**: `ALM_model_jaxopt_lbfgsb` capped every inner solve at jaxopt's default 50
-  iterations. [uwplasma/ESSOS#147](https://github.com/uwplasma/ESSOS/pull/147) exposes the cap,
-  and `requirements.txt` installs that branch until it is merged. Raising it brought the
-  augmented Lagrangian from 1.5e-3 to 3.4e-4 mean boundary error for ι = 2. Inequality
+  iterations. [uwplasma/ESSOS#147](https://github.com/uwplasma/ESSOS/pull/147), now merged,
+  exposes the cap. Raising it brought the augmented Lagrangian from 1.5e-3 to 3.4e-4 mean
+  boundary error for ι = 2. Inequality
   constraints are also unsupported ([uwplasma/ESSOS#145](https://github.com/uwplasma/ESSOS/issues/145)),
   so the scripts write each limit as an equality on its violation.
 

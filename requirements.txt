@@ -1,2 +1,2 @@
-essos @ git+https://github.com/uwplasma/ESSOS@feat/alm-inner-solver-options
+essos @ git+https://github.com/uwplasma/ESSOS
 virtual-casing-jax>=0.0.10
