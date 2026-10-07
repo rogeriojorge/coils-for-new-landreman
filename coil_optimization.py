@@ -108,6 +108,32 @@ def report(label, coils, t, n_coils, conductor_radius=0.05):
     return summary
 
 
+def optimize(coils0, t, limits, weights, n_coils, maxiter=1000, snapshot_every=10, verbose=True):
+    """Weighted-penalty optimization with SciPy L-BFGS-B and exact JAX gradients."""
+    from scipy.optimize import minimize
+    objective = lambda dofs: (lambda d: (sum(weights[k] * v for k, v in d.items()), d))(
+        terms(coils0.with_dofs(dofs), t, limits, n_coils))
+    value_and_grad = jax.jit(jax.value_and_grad(objective, has_aux=True))
+    history, snapshots = [], []
+
+    def fun(x):
+        (value, d), grad = value_and_grad(jnp.asarray(x))
+        history.append({k: float(v) for k, v in d.items()})
+        if len(history) % snapshot_every == 1:
+            coils = coils0.with_dofs(jnp.asarray(x))
+            snapshots.append((len(history), np.asarray(coils.gamma),
+                              float(jnp.mean(jnp.linalg.norm(residuals(coils, t)[0], axis=1)))))
+        if verbose and len(history) % 100 == 0:
+            print(f"  eval {len(history)}: total {value:.3e}, " + ", ".join(f"{k} {v:.2e}" for k, v in history[-1].items()))
+        return float(value), np.asarray(grad)
+
+    t0 = time.time()
+    result = minimize(fun, np.asarray(coils0.dofs), jac=True, method="L-BFGS-B",
+                      options=dict(maxiter=maxiter, maxcor=50, ftol=1e-15, gtol=1e-12))
+    print(f"{result.message} after {result.nit} iterations in {time.time() - t0:.1f} s")
+    return coils0.with_dofs(jnp.asarray(result.x)), history, snapshots
+
+
 def save_results(name, coils, t, history, snapshots, title):
     """coils_<name>.json, a figure (coils on the boundary coloured by |dB.n|/B, convergence) and a GIF."""
     coils.to_json(f"coils_{name}.json")

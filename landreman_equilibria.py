@@ -8,6 +8,7 @@ Lengths and fields are in the paper's normalized units; ``coil_target`` takes th
 physical scale factors.
 """
 import jax
+import numpy as np
 import jax.numpy as jnp
 from essos.surfaces import surfacerzfourier_from_boundary
 
@@ -138,3 +139,29 @@ def fit_surface(surface, mpol, ntor, ntheta=64, nphi=64, **kwargs):
     rbc = jnp.where(keep, weight * jnp.sum(R * jnp.cos(angle), axis=(-2, -1)), 0)
     zbs = jnp.where(keep, weight * jnp.sum(Z * jnp.sin(angle), axis=(-2, -1)), 0)
     return surfacerzfourier_from_boundary(rbc, zbs, NFP, **kwargs)
+
+
+# ---------------- cases used for coils, scaled to physical units ----------------
+CASES = dict(iota2=(0.5, 1 / 64),  # eps, psi_edge (paper figure 1)
+             A=(1.08, 3.0, 0.7, 3.5), B=(4.0, 3.5, 0.7, 3.5),  # eps, S, k_b, lambda (paper figure 2)
+             D=(1.0, 2.0, 0.5, 3.5))  # new: foci (0, +-sqrt(eps)) far from the plasma
+
+
+def case(name, major_radius=1.0, B_axis=1.0, inner_fraction=0.25):
+    """Field, boundary, interior target surface (psi = inner_fraction psi_edge) and axis semi-axes of a case,
+    scaled to a mean axis radius `major_radius` (m) and |B| = `B_axis` (T) on the axis at phi = 0."""
+    if name == "iota2":
+        eps, psi = CASES[name]
+        L = major_radius / np.sqrt(1 - eps**2)
+        b = B_axis / jnp.linalg.norm(iota2_B(iota2_surface(0., 0., eps, 0.), eps))
+        return dict(B=lambda x: b * iota2_B(x / L, eps), axis=None, title="ι = 2, ε = 1/2",
+                    surface=lambda t, z: L * iota2_surface(t, z, eps, psi),
+                    inner=lambda t, z: L * iota2_surface(t, z, eps, inner_fraction * psi))
+    eps, S, k, lam = CASES[name]
+    h = np.sqrt(4 * S**2 + eps**2)
+    L = 2 * major_radius / (np.sqrt((h - eps) / 2) + np.sqrt((h + eps) / 2))  # axis semi-axes, eq. (3.27)
+    b = B_axis / jnp.linalg.norm(sheared_B(sheared_surface(0., 0., eps, S, lam, 0.), eps, S, lam))
+    return dict(B=lambda x: b * sheared_B(x / L, eps, S, lam), title=f"sheared ι, case {name}",
+                axis=(L * np.sqrt((h - eps) / 2), L * np.sqrt((h + eps) / 2)),
+                surface=lambda t, z: L * sheared_surface(t, z, eps, S, lam, k),
+                inner=lambda t, z: L * sheared_surface(t, z, eps, S, lam, np.sqrt(inner_fraction) * k))

@@ -3,20 +3,17 @@
 The field mismatch is the objective; every engineering limit is a constraint with its own multiplier
 (essos.augmented_lagrangian), so no penalty weights need tuning."""
 import time
-import jax
 import jax.numpy as jnp
 import numpy as np
 import essos.augmented_lagrangian as alm
-from landreman_equilibria import iota2_B, iota2_surface
+from landreman_equilibria import case
 from coil_optimization import targets, initial_coils, terms, constraints, residuals, report, save_results
 
-""" Equilibrium: figure 1 of the paper (eps = 1/2, edge psi = 1/64), in physical units """
-EPS, PSI_EDGE = 0.5, 1 / 64
-MAJOR_RADIUS, B_AXIS = 1.0, 1.0             # axis radius (m) and |B| on axis at phi = 0 (T)
-TARGET_FLUX_FRACTION = 0.25                 # interior field matched on psi = 0.25 psi_edge (half radius)
+""" Equilibrium: figure 1 of the paper (eps = 1/2, edge psi = 1/64), 1 m axis radius, 1 T on axis """
+eq = case("iota2", major_radius=1.0, B_axis=1.0, inner_fraction=0.25)  # interior field matched at half radius
 
 """ Coils and constraints """
-N_COILS, ORDER, N_SEGMENTS, COIL_MINOR_RADIUS = 6, 4, 100, 0.55
+N_COILS, ORDER, N_SEGMENTS, COIL_MINOR_RADIUS = 5, 4, 100, 0.55
 LIMITS = dict(length=4.0, curvature=4.0, msc=9.0, total_curvature=3 * np.pi, arclength=0.05,
               coil_distance=0.12, surface_distance=0.2)  # m, 1/m, 1/m^2, rad, -, m, m
 FIELD_SCALE = 1e2                           # objective = FIELD_SCALE^2 (field + normal mismatch)
@@ -25,13 +22,9 @@ INNER_TOL = 1e-6                            # gradient tolerance of each inner s
 AL = dict(model_lagrangian="Squared", beta=2.0, mu_max=1e4, eta_tol=1e-6, omega_tol=1e-8,
           inner_maxiter=400, history_size=50)  # each inner L-BFGS-B solve
 
-""" Setting up the equilibrium, the exact targets and the initial coils """
-L = MAJOR_RADIUS / np.sqrt(1 - EPS**2)
-b = B_AXIS / jnp.linalg.norm(iota2_B(iota2_surface(0., 0., EPS, 0.), EPS))
-B = lambda x: b * iota2_B(x / L, EPS)
-surface = lambda theta, zeta: L * iota2_surface(theta, zeta, EPS, PSI_EDGE)
-t = targets(surface, B, lambda theta, zeta: L * iota2_surface(theta, zeta, EPS, TARGET_FLUX_FRACTION * PSI_EDGE))
-coils0 = initial_coils(t, N_COILS, ORDER, N_SEGMENTS, MAJOR_RADIUS, COIL_MINOR_RADIUS)
+""" Setting up the exact targets and the initial coils """
+t = targets(eq["surface"], eq["B"], eq["inner"])
+coils0 = initial_coils(t, N_COILS, ORDER, N_SEGMENTS, 1.0, COIL_MINOR_RADIUS)
 
 """ Objective and constraints """
 def mismatch(dofs):
@@ -61,4 +54,4 @@ print(f"Augmented Lagrangian: {i + 1} outer iterations in {time.time() - t0:.1f}
 
 """ Results """
 report("Optimized coils", coils, t, N_COILS)
-save_results("iota2_al", coils, t, history, snapshots, "ι = 2, ε = 1/2 (augmented Lagrangian)")
+save_results("iota2_al", coils, t, history, snapshots, eq["title"] + " (augmented Lagrangian)")

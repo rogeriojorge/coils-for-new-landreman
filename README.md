@@ -20,18 +20,20 @@ python optimize_coils_iota2.py                              # ι = 2, weighted p
 python optimize_coils_iota2_augmented_lagrangian.py         # ι = 2, augmented Lagrangian
 python optimize_coils_sheared_iota.py                       # sheared ι, CASE = "A", "B" or "D"
 python optimize_coils_sheared_iota_augmented_lagrangian.py  # sheared ι, augmented Lagrangian
+python scan_coils.py                                        # coil count / curvature / length scan (108 runs)
 pytest -q                                                   # machine-precision checks of the equilibria
 ```
 
 Each script runs on its own and prints its progress. It writes `coils_<case>.json` (ESSOS coils),
 `coils_<case>.png` (coils on the boundary coloured by the B·n error, plus convergence) and
-`coils_<case>.gif` (the optimization). Penalty runs take about 2 minutes on a laptop CPU, augmented-Lagrangian runs 10–70 minutes.
+`coils_<case>.gif` (the optimization). Penalty runs take about 2 minutes on a laptop CPU, augmented-Lagrangian runs 9–15 minutes, the scan about 1.5 hours.
 
 | file | content |
 | --- | --- |
 | `landreman_equilibria.py` | both families in JAX, the exact boundary, the exact coil-field target, the boundary B·n target |
-| `coil_optimization.py` | targets, objective terms, constraints, report, figure and movie, shared by the four scripts |
+| `coil_optimization.py` | targets, objective terms, constraints, penalty optimizer, report, figure and movie |
 | `optimize_coils_*.py` | one script per family and method |
+| `scan_coils.py` | scan of coils per half period, curvature limit and length limit (`scan_results.json`, `scan.png`) |
 | `tests/test_equilibria.py` | div B = 0, J × B = ∇p, B·∇ψ = 0, B·n = 0 on the boundary, ι(0) from the paper, vacuum coil field |
 
 ## Equilibria
@@ -84,7 +86,7 @@ The coil limits are:
 - coil–coil distance ≥ 0.12 m and coil–plasma distance ≥ 0.2 m;
 - zero linking number.
 
-All gradients are exact (JAX). The coils start as circles, 6 per half period (24 in total),
+All gradients are exact (JAX). The coils start as circles, 5 per half period (20 in total, chosen by the scan),
 Fourier order 4, centred on the elliptical axis for the sheared cases.
 
 **Penalty vs augmented Lagrangian.**
@@ -98,22 +100,20 @@ Fourier order 4, centred on the elliptical axis for the sheared cases.
 
 | case | method | interior \|ΔB\|/\|B\| mean / max | boundary \|ΔB·n\|/\|B\| mean / max | max κ (m⁻¹) | max ∫κdl / 2π | time |
 | --- | --- | --- | --- | --- | --- | --- |
-| ι = 2 | penalty | 1.1e-4 / 3.1e-4 | 2.6e-4 / 1.3e-3 | 4.01 | 1.50 | 117 s |
-| ι = 2 | augmented Lagrangian | 1.7e-4 / 4.8e-4 | 3.4e-4 / 1.8e-3 | 4.00 | 1.50 | 963 s |
-| sheared A | penalty | 3.0e-3 / 9.4e-3 | 7.8e-3 / 4.2e-2 | 4.34 | 1.50 | 108 s |
-| sheared A | augmented Lagrangian | 4.7e-3 / 1.1e-2 | 1.4e-2 / 5.1e-2 | 4.00 | 1.50 | 4227 s |
-| sheared D | penalty | 9.8e-4 / 2.2e-3 | 2.8e-3 / 9.0e-3 | 4.11 | 1.50 | 104 s |
-| sheared D | augmented Lagrangian | 9.3e-4 / 2.3e-3 | 2.9e-3 / 1.1e-2 | 4.00 | 1.50 | 662 s |
+| ι = 2 | penalty | 2.0e-4 / 6.5e-4 | 4.3e-4 / 2.0e-3 | 4.01 | 1.50 | 101 s |
+| ι = 2 | augmented Lagrangian | 2.6e-4 / 8.4e-4 | 5.0e-4 / 2.5e-3 | 4.00 | 1.50 | 527 s |
+| sheared A | penalty | 3.6e-3 / 9.5e-3 | 9.2e-3 / 4.6e-2 | 4.34 | 1.50 | 93 s |
+| sheared A | augmented Lagrangian | 4.6e-3 / 9.7e-3 | 1.3e-2 / 5.3e-2 | 4.00 | 1.50 | 891 s |
+| sheared D | penalty | 1.1e-3 / 2.4e-3 | 3.2e-3 / 1.1e-2 | 4.07 | 1.50 | 98 s |
+| sheared D | augmented Lagrangian | 1.1e-3 / 2.7e-3 | 3.3e-3 / 1.1e-2 | 4.00 | 1.50 | 870 s |
 
 - The penalty method reaches the lowest field error, by letting the limits overshoot slightly
   (curvature 4.01–4.34 m⁻¹ for a 4 m⁻¹ limit).
 - The augmented Lagrangian meets every limit exactly with no weights to tune. It matches the
-  penalty field error for case D and is within 1.5× for ι = 2. For case A it is about 2× worse,
-  because the penalty run reaches its field by exceeding the curvature limit. It takes 6–40×
-  longer.
-- Case D gives sub-percent boundary B·n with a strongly elliptical axis: about 5× better than A
-  at the maximum, with lower ι.
-- Mean coil forces are 0.8–1.3 × 10⁵ N/m. They are reported, not penalized.
+  penalty field for case D and is within 1.3× for ι = 2 and 1.4× for A. It takes 5–10× longer.
+- Case D gives about 1% maximum boundary B·n with a strongly elliptical axis: 4× better than A,
+  with lower ι.
+- Mean coil forces are 1.0–1.6 × 10⁵ N/m. They are reported, not penalized.
 
 | | penalty | augmented Lagrangian |
 | --- | --- | --- |
@@ -125,10 +125,34 @@ Movies of every run: `coils_<case>.gif` and `coils_<case>_al.gif`.
 
 ## Parameter scan
 
-Five objective variants per case, 500 iterations each, chose the defaults:
+`scan_coils.py` runs the penalty optimization (500 iterations) for every combination of:
+- 3, 4, 5 or 6 coils per half period;
+- curvature limit 3, 4 or 5 m⁻¹ (mean squared curvature limit (0.75 κ)²);
+- length limit 3, 4 or 5 m;
 
-- Interior field plus boundary B·n is required; either term alone fails (above).
-- Relaxing length from 3.4 to 4 m and curvature from 3 to 4 m⁻¹ improved ι = 2 and A by 2–4×.
+for each of the three cases, 108 runs in total. Each case's targets are computed once.
+
+![parameter scan](scan.png)
+
+| case | 3 coils | 4 coils | 5 coils | 6 coils |
+| --- | --- | --- | --- | --- |
+| ι = 2 | 2.7e-2 | 6.7e-3 | 2.2e-3 | 1.7e-3 |
+| sheared A | 6.0e-2 | 5.1e-2 | 4.6e-2 | 4.2e-2 |
+| sheared D | 1.9e-2 | 1.3e-2 | 9.8e-3 | 9.7e-3 |
+
+*Maximum boundary \|ΔB·n\|/\|B\| at curvature ≤ 4 m⁻¹ and length ≤ 4 m.*
+
+- **Coil length matters most for ι = 2.** Going from 3 to 4 m cuts the error 2.4–6× for ι = 2,
+  and 1.3–2.6× for A and D. 5 m helps only ι = 2 with 3–4 coils.
+- **Curvature: 4 m⁻¹ is enough.** 5 m⁻¹ changes the error by at most 15%. 3 m⁻¹ costs 1.5–9×,
+  most with short coils.
+- **Five coils per half period is the compromise.** It is within 1.3× of six coils in every
+  case, while 4 coils cost 3× for ι = 2. Case D still reaches 1.3% with 4.
+- **The loop cap binds.** The total curvature sits at 1.5·2π whenever coils may be 4 m or
+  longer. For case A this, not coil count or length, sets the 4–5% plateau.
+
+Earlier objective variants (500 iterations each) fixed the rest of the defaults:
+- Interior field plus boundary B·n is required; either term alone fails.
 - A total-curvature cap of 1.25·2π instead of 1.5·2π costs about 25% (ι = 2) and 5% (A).
 - A stronger coil–coil distance term changed nothing.
 
