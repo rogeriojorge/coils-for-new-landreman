@@ -25,7 +25,7 @@ pytest -q                                                   # machine-precision 
 
 Each script runs on its own and prints its progress. It writes `coils_<case>.json` (ESSOS coils),
 `coils_<case>.png` (coils on the boundary coloured by the B·n error, plus convergence) and
-`coils_<case>.gif` (the optimization). Each run takes 2–10 minutes on a laptop CPU.
+`coils_<case>.gif` (the optimization). Penalty runs take about 2 minutes on a laptop CPU, augmented-Lagrangian runs 10–70 minutes.
 
 | file | content |
 | --- | --- |
@@ -91,23 +91,26 @@ Fourier order 4, centred on the elliptical axis for the sheared cases.
 - *Penalty*: the limits are weighted penalties, minimized with SciPy L-BFGS-B (1000 iterations).
 - *Augmented Lagrangian*: the field mismatch is the objective and every limit is an equality
   constraint, max(value − limit, 0) = 0, each with its own multiplier
-  (`essos.augmented_lagrangian`, 40 outer iterations). No weights need tuning.
+  (`essos.augmented_lagrangian`). No weights need tuning. It runs 10 outer iterations, each an
+  L-BFGS-B solve of up to 400 iterations with tolerance 1e-6.
 
 ## Results
 
 | case | method | interior \|ΔB\|/\|B\| mean / max | boundary \|ΔB·n\|/\|B\| mean / max | max κ (m⁻¹) | max ∫κdl / 2π | time |
 | --- | --- | --- | --- | --- | --- | --- |
 | ι = 2 | penalty | 1.1e-4 / 3.1e-4 | 2.6e-4 / 1.3e-3 | 4.01 | 1.50 | 117 s |
-| ι = 2 | augmented Lagrangian | 1.2e-3 / 3.2e-3 | 1.5e-3 / 9.3e-3 | 4.00 | 1.50 | 347 s |
+| ι = 2 | augmented Lagrangian | 1.7e-4 / 4.8e-4 | 3.4e-4 / 1.8e-3 | 4.00 | 1.50 | 963 s |
 | sheared A | penalty | 3.0e-3 / 9.4e-3 | 7.8e-3 / 4.2e-2 | 4.34 | 1.50 | 108 s |
-| sheared A | augmented Lagrangian | 5.3e-3 / 9.3e-3 | 1.5e-2 / 5.8e-2 | 4.00 | 1.50 | 563 s |
+| sheared A | augmented Lagrangian | 4.7e-3 / 1.1e-2 | 1.4e-2 / 5.1e-2 | 4.00 | 1.50 | 4227 s |
 | sheared D | penalty | 9.8e-4 / 2.2e-3 | 2.8e-3 / 9.0e-3 | 4.11 | 1.50 | 104 s |
-| sheared D | augmented Lagrangian | 1.5e-3 / 2.9e-3 | 4.5e-3 / 1.3e-2 | 4.00 | 1.50 | 200 s |
+| sheared D | augmented Lagrangian | 9.3e-4 / 2.3e-3 | 2.9e-3 / 1.1e-2 | 4.00 | 1.50 | 662 s |
 
 - The penalty method reaches the lowest field error, by letting the limits overshoot slightly
   (curvature 4.01–4.34 m⁻¹ for a 4 m⁻¹ limit).
-- The augmented Lagrangian meets every limit exactly with no weights to tune. It costs a
-  1.5–11× larger field error at 40 outer iterations, and 2–5× the run time.
+- The augmented Lagrangian meets every limit exactly with no weights to tune. It matches the
+  penalty field error for case D and is within 1.5× for ι = 2. For case A it is about 2× worse,
+  because the penalty run reaches its field by exceeding the curvature limit. It takes 6–40×
+  longer.
 - Case D gives sub-percent boundary B·n with a strongly elliptical axis: about 5× better than A
   at the maximum, with lower ι.
 - Mean coil forces are 0.8–1.3 × 10⁵ N/m. They are reported, not penalized.
@@ -135,9 +138,12 @@ Five objective variants per case, 500 iterations each, chose the defaults:
   which looked like a hang.
   [uwplasma/virtual_casing_jax#19](https://github.com/uwplasma/virtual_casing_jax/pull/19)
   fixes it, and `requirements.txt` installs that branch until it is merged.
-- **ESSOS**: inequality constraints are not supported by `ALM_model_jaxopt_lbfgsb`
-  ([uwplasma/ESSOS#145](https://github.com/uwplasma/ESSOS/issues/145)). The scripts write each
-  limit as an equality on its violation instead.
+- **ESSOS**: `ALM_model_jaxopt_lbfgsb` capped every inner solve at jaxopt's default 50
+  iterations. [uwplasma/ESSOS#147](https://github.com/uwplasma/ESSOS/pull/147) exposes the cap,
+  and `requirements.txt` installs that branch until it is merged. Raising it brought the
+  augmented Lagrangian from 1.5e-3 to 3.4e-4 mean boundary error for ι = 2. Inequality
+  constraints are also unsupported ([uwplasma/ESSOS#145](https://github.com/uwplasma/ESSOS/issues/145)),
+  so the scripts write each limit as an equality on its violation.
 
 ## Reference
 

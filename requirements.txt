@@ -1,2 +1,2 @@
-essos @ git+https://github.com/uwplasma/ESSOS
+essos @ git+https://github.com/uwplasma/ESSOS@feat/alm-inner-solver-options
 virtual-casing-jax @ git+https://github.com/uwplasma/virtual_casing_jax@fix/left-handed-orientation

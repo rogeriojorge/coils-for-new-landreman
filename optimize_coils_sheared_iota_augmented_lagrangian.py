@@ -22,8 +22,10 @@ N_COILS, ORDER, N_SEGMENTS, COIL_MINOR_RADIUS = 6, 4, 100, 0.55
 LIMITS = dict(length=4.0, curvature=4.0, msc=9.0, total_curvature=3 * np.pi, arclength=0.05,
               coil_distance=0.12, surface_distance=0.2)  # m, 1/m, 1/m^2, rad, -, m, m
 FIELD_SCALE = 1e2                           # objective = FIELD_SCALE^2 (field + normal mismatch)
-OUTER_ITERATIONS = 40                       # multiplier updates, each an inner L-BFGS-B solve
-AL = dict(model_lagrangian="Squared", beta=2.0, mu_max=1e4, eta_tol=1e-6, omega_tol=1e-8)
+OUTER_ITERATIONS = 10                       # multiplier updates, each an inner L-BFGS-B solve
+INNER_TOL = 1e-6                            # gradient tolerance of each inner solve (ESSOS default 1)
+AL = dict(model_lagrangian="Squared", beta=2.0, mu_max=1e4, eta_tol=1e-6, omega_tol=1e-8,
+          inner_maxiter=400, history_size=50)  # each inner L-BFGS-B solve
 
 """ Setting up the equilibrium, the exact targets and the initial coils """
 h = np.sqrt(4 * S**2 + EPS**2)
@@ -43,7 +45,7 @@ def mismatch(dofs):
     return FIELD_SCALE * jnp.concatenate([dB.ravel() / np.sqrt(len(dB)), Bn.ravel() / np.sqrt(Bn.size)])
 
 pick = lambda key: lambda dofs: constraints(coils0.with_dofs(dofs), t, LIMITS, N_COILS)[key]
-C = alm.combine(*[alm.eq(pick(k), model_lagrangian=AL["model_lagrangian"])
+C = alm.combine(*[alm.eq(pick(k), model_lagrangian=AL["model_lagrangian"], omega=INNER_TOL)
                   for k in constraints(coils0, t, LIMITS, N_COILS)])
 model = alm.ALM_model_jaxopt_lbfgsb(constraints=C, loss=mismatch, **AL)
 params = coils0.dofs, C.init(coils0.dofs)
