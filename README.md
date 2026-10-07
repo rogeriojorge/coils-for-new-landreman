@@ -137,7 +137,7 @@ Five objective variants per case, 500 iterations each, chose the defaults:
 - **virtual_casing_jax**: left-handed (φ, θ) grids inflated the singular quadrature about 2500×,
   which looked like a hang.
   [uwplasma/virtual_casing_jax#19](https://github.com/uwplasma/virtual_casing_jax/pull/19)
-  fixes it, and `requirements.txt` installs that branch until it is merged.
+  fixes it; released in virtual-casing-jax 0.0.10.
 - **ESSOS**: `ALM_model_jaxopt_lbfgsb` capped every inner solve at jaxopt's default 50
   iterations. [uwplasma/ESSOS#147](https://github.com/uwplasma/ESSOS/pull/147) exposes the cap,
   and `requirements.txt` installs that branch until it is merged. Raising it brought the
