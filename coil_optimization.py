@@ -9,11 +9,11 @@ from essos.coils import Coils, CreateEquallySpacedCurves
 from essos.fields import BiotSavart
 from essos.objective_functions import (loss_coil_separation, loss_coil_surface_distance,
                                        loss_linkingnumber, loss_lorentz_force_coils)
-from landreman_equilibria import NFP, boundary_normal_target, coil_field, fit_surface
+from landreman_equilibria import NFP, boundary_target, coil_field, fit_surface
 
 
-def targets(surface, B, inner_surface, ntheta=24, nzeta=16, quadrature=(192, 4608), nbn=32, digits=6):
-    """Exact coil field at interior points (on inner_surface) and the coil B.n on the exact boundary."""
+def targets(surface, B, inner_surface, ntheta=24, nzeta=16, quadrature=(192, 4608), nbn=32, digits=4):
+    """Exact coil field at interior points (on inner_surface) and on the exact boundary (virtual casing)."""
     theta, zeta = (a.ravel() for a in jnp.meshgrid(jnp.linspace(0, 2 * jnp.pi, ntheta, endpoint=False),
                                                     jnp.linspace(0, jnp.pi / NFP, nzeta)))
     points = jax.vmap(inner_surface)(theta, zeta)
@@ -24,10 +24,12 @@ def targets(surface, B, inner_surface, ntheta=24, nzeta=16, quadrature=(192, 460
     print(f"Exact coil-field target on {len(points)} points in {time.time() - t0:.1f} s; error bound "
           f"(2/3 resolution) max|dB|/B = {jnp.max(jnp.linalg.norm(B_target - B_check, axis=1) / B_points):.2e}; "
           f"plasma-current share {jnp.mean(jnp.linalg.norm(jax.vmap(B)(points) - B_target, axis=1) / B_points):.3f}")
-    gamma_b, normal_b, Bn_target, B_b = boundary_normal_target(surface, B, nbn, nbn, digits)  # one field period
-    print(f"Boundary target by virtual casing ({digits} digits): max|B_coils.n|/B = {jnp.max(jnp.abs(Bn_target) / B_b):.3e}")
+    gamma_b, normal_b, B_ext_b, B_total_b = boundary_target(surface, B, nbn, nbn, digits)  # one field period
+    B_b = jnp.linalg.norm(B_total_b, axis=-1)
+    print(f"Boundary target by virtual casing ({digits} digits): max|B_coils.n|/B = "
+          f"{jnp.max(jnp.abs(jnp.sum(B_ext_b * normal_b, -1)) / B_b):.3e}")
     return dict(points=points, B_target=B_target, B_points=B_points, gamma_b=gamma_b, normal_b=normal_b,
-                Bn_target=Bn_target, B_b=B_b, half=nbn // 2,  # stellarator symmetry: half a period suffices
+                B_ext_b=B_ext_b, B_b=B_b, half=nbn // 2,  # stellarator symmetry: half a period suffices
                 plasma=fit_surface(surface, 12, 12, range_torus="full torus"))
 
 
@@ -46,12 +48,12 @@ def initial_coils(t, n_coils, order, n_segments, major_radius, minor_radius, axi
 
 
 def residuals(coils, t):
-    """Relative interior field mismatch (3 per point) and boundary normal-field mismatch."""
+    """Relative coil-field mismatch at the interior points and on the boundary (3 components each)."""
     field = BiotSavart(coils)
     dB = (jax.vmap(field.B)(t["points"]) - t["B_target"]) / t["B_points"][:, None]
-    g, n = t["gamma_b"][:t["half"]], t["normal_b"][:t["half"]]
-    Bn = (jnp.sum(jax.vmap(jax.vmap(field.B))(g) * n, -1) - t["Bn_target"][:t["half"]]) / t["B_b"][:t["half"]]
-    return dB, Bn
+    h = t["half"]
+    dBb = (jax.vmap(jax.vmap(field.B))(t["gamma_b"][:h]) - t["B_ext_b"][:h]) / t["B_b"][:h, :, None]
+    return dB, dBb
 
 
 def geometry(coils, n_coils):
@@ -64,10 +66,10 @@ def geometry(coils, n_coils):
 
 def terms(coils, t, limits, n_coils):
     """Penalty terms; each is zero when its engineering limit is met."""
-    dB, Bn = residuals(coils, t)
+    dB, dBb = residuals(coils, t)
     g = geometry(coils, n_coils)
     over = lambda x, limit: jnp.maximum(x - limit, 0)**2
-    return dict(field=jnp.mean(jnp.sum(dB**2, 1)), normal=jnp.mean(Bn**2),
+    return dict(field=jnp.mean(jnp.sum(dB**2, 1)), boundary=jnp.mean(jnp.sum(dBb**2, -1)),
                 length=jnp.sum(over(g["length"], limits["length"])),
                 curvature=jnp.mean(over(g["kappa"], limits["curvature"])),
                 msc=jnp.sum(over(g["msc"], limits["msc"])),
@@ -92,16 +94,19 @@ def constraints(coils, t, limits, n_coils):
 
 def report(label, coils, t, n_coils, conductor_radius=0.05):
     """One-line summary: interior and boundary errors, geometry, force."""
-    dB, Bn = residuals(coils, t)
-    dB, Bn, g = jnp.linalg.norm(dB, axis=1), jnp.abs(Bn), geometry(coils, n_coils)
+    dB, dBb = residuals(coils, t)
+    Bn = jnp.abs(jnp.sum(dBb * t["normal_b"][:t["half"]], -1))
+    dB, dBb, g = jnp.linalg.norm(dB, axis=1), jnp.linalg.norm(dBb, axis=-1), geometry(coils, n_coils)
     force = loss_lorentz_force_coils(coils, threshold=0., conductor_radius=conductor_radius) / len(coils)
     summary = dict(interior_mean=float(jnp.mean(dB)), interior_max=float(jnp.max(dB)),
                    boundary_mean=float(jnp.mean(Bn)), boundary_max=float(jnp.max(Bn)),
+                   boundary_vector_mean=float(jnp.mean(dBb)), boundary_vector_max=float(jnp.max(dBb)),
                    max_length=float(jnp.max(g["length"])), max_curvature=float(jnp.max(g["kappa"])),
                    max_total_curvature_over_2pi=float(jnp.max(g["total_curvature"]) / (2 * np.pi)),
                    mean_force=float(force))
     print(f"{label}: interior |dB|/B mean {summary['interior_mean']:.2e} max {summary['interior_max']:.2e}; "
-          f"boundary |dB.n|/B mean {summary['boundary_mean']:.2e} max {summary['boundary_max']:.2e}; "
+          f"boundary |dB.n|/B mean {summary['boundary_mean']:.2e} max {summary['boundary_max']:.2e}, "
+          f"|dB|/B mean {summary['boundary_vector_mean']:.2e} max {summary['boundary_vector_max']:.2e}; "
           f"length {np.round(np.asarray(g['length']), 2)} m; max curvature {summary['max_curvature']:.2f} 1/m; "
           f"total curvature/2pi {np.round(np.asarray(g['total_curvature']) / (2 * np.pi), 2)}; "
           f"mean force {summary['mean_force']:.2e} N/m")
@@ -139,7 +144,7 @@ def save_results(name, coils, t, history, snapshots, title):
     coils.to_json(f"coils_{name}.json")
     # boundary error on one field period, rotated to the full torus
     g, n = t["gamma_b"], t["normal_b"]
-    Bn = np.asarray(jnp.abs(jnp.sum(jax.vmap(jax.vmap(BiotSavart(coils).B))(g) * n, -1) - t["Bn_target"]) / t["B_b"])
+    Bn = np.asarray(jnp.abs(jnp.sum((jax.vmap(jax.vmap(BiotSavart(coils).B))(g) - t["B_ext_b"]) * n, -1)) / t["B_b"])
     rot = lambda k, v: np.stack([np.cos(2 * np.pi * k / NFP) * v[..., 0] - np.sin(2 * np.pi * k / NFP) * v[..., 1],
                                  np.sin(2 * np.pi * k / NFP) * v[..., 0] + np.cos(2 * np.pi * k / NFP) * v[..., 1],
                                  v[..., 2]], -1)
@@ -159,7 +164,7 @@ def save_results(name, coils, t, history, snapshots, title):
     ax.set(xlim=(-r, r), ylim=(-r, r), zlim=(-0.4 * r, 0.4 * r)); ax.set_box_aspect((1, 1, 0.4))
     ax.set_axis_off(); ax.set_title(title, y=0.92)
     ax = fig.add_axes([0.62, 0.14, 0.35, 0.74])
-    for key, label in (("field", "interior field"), ("normal", "boundary B·n")):
+    for key, label in (("field", "interior field"), ("boundary", "boundary field")):
         ax.semilogy([h[key] for h in history], label=label)
     ax.set_xlabel("iteration"); ax.set_ylabel("mean squared relative mismatch"); ax.legend()
     ax.grid(alpha=0.3)

@@ -14,6 +14,7 @@ from essos.surfaces import surfacerzfourier_from_boundary
 
 jax.config.update("jax_enable_x64", True)
 NFP = 2
+MU0 = 4e-7 * np.pi
 
 
 # ---------------- family 1: iota = 2 (section 2 of the paper) ----------------
@@ -70,6 +71,23 @@ def sheared_surface(theta, zeta, eps, S, lam, k):
                       jnp.sqrt((h + eps) / 2) * jnp.sin(zeta), -jnp.arcsin(Y) / lam])
 
 
+def sheared_iota(eps, S, k, turns=40, n=4000):
+    """Eq. (3.28): iota on the surface psi = k^2/2, by RK4 integration of d chi / d zeta over many transits."""
+    def rhs(chi, z):
+        nu, X, Y = eps / 2 * jnp.sin(2 * z), -k * jnp.cos(chi), k * jnp.sin(chi)
+        sigma = (S + jnp.arctan(jnp.tanh(nu) * Y / jnp.sqrt(1 - Y**2))
+                 - jnp.arcsin(X / jnp.sqrt(jnp.cosh(nu)**2 - Y**2)))
+        G = (jnp.sqrt(4 * sigma**2 + eps**2) + eps * jnp.cos(2 * z)) / 2
+        return 2 * G * jnp.sqrt(1 - k**2 * jnp.sin(chi)**2) / jnp.sqrt(jnp.cosh(nu)**2 - k**2)
+    h = 2 * jnp.pi * turns / n
+
+    def step(chi, i):
+        z = i * h
+        k1 = rhs(chi, z); k2 = rhs(chi + h / 2 * k1, z + h / 2); k3 = rhs(chi + h / 2 * k2, z + h / 2)
+        return chi + h / 6 * (k1 + 2 * k2 + 2 * k3 + rhs(chi + h * k3, z + h)), None
+    return jax.lax.scan(step, 0., jnp.arange(n))[0] / (2 * jnp.pi * turns)
+
+
 def sheared_iota_axis(eps, S, n=512):
     """Eq. (3.29): on-axis transform iota(0) = h(S) <sech nu>."""
     zeta = jnp.linspace(0, 2 * jnp.pi, n, endpoint=False)
@@ -77,17 +95,21 @@ def sheared_iota_axis(eps, S, n=512):
 
 
 # ---------------- exact boundary and coil target ----------------
-def boundary(surface, ntheta, nphi, newton_steps=30):
-    """Exact points and unit normals of surface(theta, zeta) on a grid uniform in theta and in
-    the cylindrical angle phi over one field period, shape (nphi, ntheta, 3). zeta(phi) is a
-    Newton root (phi is monotonic in zeta); normals use the exact tangents d/dtheta x d/dzeta."""
+def section_zeta(surface, theta, phi, newton_steps=30):
+    """zeta at which surface(theta, zeta) crosses the cylindrical angle phi (phi is monotonic in zeta)."""
+    angle = lambda z: jnp.arctan2(surface(theta, z)[1], surface(theta, z)[0])
+    step = lambda z, _: (z - jnp.angle(jnp.exp(1j * (angle(z) - phi))) / jax.grad(angle)(z), None)
+    return jax.lax.scan(step, phi, None, newton_steps)[0]
+
+
+def boundary(surface, ntheta, nphi):
+    """Exact points and unit normals of surface(theta, zeta) on a grid uniform in theta and in the cylindrical
+    angle phi over one field period, shape (nphi, ntheta, 3); normals use the exact tangents d/dtheta x d/dzeta."""
     theta = jnp.linspace(0, 2 * jnp.pi, ntheta, endpoint=False)
     phi = jnp.linspace(0, 2 * jnp.pi / NFP, nphi, endpoint=False)
 
     def point(t, p):
-        angle = lambda z: jnp.arctan2(surface(t, z)[1], surface(t, z)[0])
-        step = lambda z, _: (z - jnp.angle(jnp.exp(1j * (angle(z) - p))) / jax.grad(angle)(z), None)
-        z = jax.lax.scan(step, p, None, newton_steps)[0]
+        z = section_zeta(surface, t, p)
         normal = jnp.cross(jax.jacfwd(surface, 0)(t, z), jax.jacfwd(surface, 1)(t, z))
         return surface(t, z), normal / jnp.linalg.norm(normal)
     return jax.vmap(lambda p: jax.vmap(lambda t: point(t, p))(theta))(phi)
@@ -112,22 +134,21 @@ def coil_field(surface, B, points, ntheta=256, nzeta=512):
     return jax.lax.map(one, points, batch_size=32)
 
 
-def boundary_normal_target(surface, B, ntheta=32, nphi=32, digits=10):
-    """Exact boundary points/normals and the coil normal field B_coils . n = -B_plasma . n there,
-    by on-surface virtual casing (singular quadrature of virtual_casing_jax), one field period."""
+def boundary_target(surface, B, ntheta=32, nphi=32, digits=4):
+    """Coil field on the exact boundary: B_coils = B_total - B_plasma, all three components (normal for B.n,
+    tangential for pressure balance), by on-surface virtual casing (virtual_casing_jax), over one field period.
+    A 32 x 32 grid at 4 digits is converged to ~2e-6 of |B| on a QH finite-beta test."""
     from virtual_casing_jax import VirtualCasingJAX
     gamma, normal = boundary(surface, ntheta, nphi)
     B_total = jax.vmap(jax.vmap(B))(gamma)
     vc = VirtualCasingJAX()
     vc.setup(digits, NFP, False, nphi, ntheta, jnp.moveaxis(gamma, -1, 0), nphi, ntheta, nphi, ntheta)
-    B_ext = jnp.moveaxis(vc.compute_external_B(jnp.moveaxis(B_total, -1, 0).reshape(3, -1), digits=digits,
-                                                    chunk_size=256, target_chunk_size=8)
-                         .reshape(3, nphi, ntheta), 0, -1)
-    return gamma, normal, jnp.sum(B_ext * normal, -1), jnp.linalg.norm(B_total, axis=-1)
+    B_ext = vc.compute_external_B(jnp.moveaxis(B_total, -1, 0).reshape(3, -1), digits=digits)
+    return gamma, normal, jnp.moveaxis(B_ext.reshape(3, nphi, ntheta), 0, -1), B_total
 
 
-def fit_surface(surface, mpol, ntor, ntheta=64, nphi=64, **kwargs):
-    """Stellarator-symmetric Fourier fit of surface(theta, zeta) -> ESSOS SurfaceRZFourier (plots)."""
+def boundary_fourier(surface, mpol, ntor, ntheta=64, nphi=64):
+    """Stellarator-symmetric VMEC tables rbc, zbs [n + ntor, m] of surface(theta, zeta) in the cylindrical angle."""
     gamma = boundary(surface, ntheta, nphi)[0]
     R, Z = jnp.hypot(gamma[..., 0], gamma[..., 1]), gamma[..., 2]
     theta = jnp.linspace(0, 2 * jnp.pi, ntheta, endpoint=False)
@@ -136,15 +157,20 @@ def fit_surface(surface, mpol, ntor, ntheta=64, nphi=64, **kwargs):
     angle = m[None, :, None, None] * theta - NFP * n[:, None, None, None] * phi[:, None]
     weight = jnp.where((m[None] == 0) & (n[:, None] == 0), 1.0, 2.0) / (ntheta * nphi)
     keep = (m[None] > 0) | (n[:, None] >= 0)
-    rbc = jnp.where(keep, weight * jnp.sum(R * jnp.cos(angle), axis=(-2, -1)), 0)
-    zbs = jnp.where(keep, weight * jnp.sum(Z * jnp.sin(angle), axis=(-2, -1)), 0)
-    return surfacerzfourier_from_boundary(rbc, zbs, NFP, **kwargs)
+    return (jnp.where(keep, weight * jnp.sum(R * jnp.cos(angle), axis=(-2, -1)), 0),
+            jnp.where(keep, weight * jnp.sum(Z * jnp.sin(angle), axis=(-2, -1)), 0))
+
+
+def fit_surface(surface, mpol, ntor, ntheta=64, nphi=64, **kwargs):
+    """Fourier fit of surface(theta, zeta) as an ESSOS SurfaceRZFourier (distances, plots)."""
+    return surfacerzfourier_from_boundary(*boundary_fourier(surface, mpol, ntor, ntheta, nphi), NFP, **kwargs)
 
 
 # ---------------- cases used for coils, scaled to physical units ----------------
 CASES = dict(iota2=(0.5, 1 / 64),  # eps, psi_edge (paper figure 1)
              A=(1.08, 3.0, 0.7, 3.5), B=(4.0, 3.5, 0.7, 3.5),  # eps, S, k_b, lambda (paper figure 2)
-             D=(1.0, 2.0, 0.5, 3.5))  # new: foci (0, +-sqrt(eps)) far from the plasma
+             D=(1.0, 2.0, 0.5, 3.5),  # new: foci (0, +-sqrt(eps)) far from the plasma
+             E=(1.0, 1.75, 0.5, 3.5))  # like D, iota 3.43-3.49 away from the iota = 4 resonance
 
 
 def case(name, major_radius=1.0, B_axis=1.0, inner_fraction=0.25):
@@ -156,7 +182,10 @@ def case(name, major_radius=1.0, B_axis=1.0, inner_fraction=0.25):
         b = B_axis / jnp.linalg.norm(iota2_B(iota2_surface(0., 0., eps, 0.), eps))
         return dict(B=lambda x: b * iota2_B(x / L, eps), axis=None, title="ι = 2, ε = 1/2",
                     surface=lambda t, z: L * iota2_surface(t, z, eps, psi),
-                    inner=lambda t, z: L * iota2_surface(t, z, eps, inner_fraction * psi))
+                    inner=lambda t, z: L * iota2_surface(t, z, eps, inner_fraction * psi),
+                    family=lambda t, z, rho: L * iota2_surface(t, z, eps, rho**2 * psi),  # rho^2 = psi/psi_edge
+                    pressure=lambda rho: b**2 / MU0 * 2 * psi * (1 - rho**2),  # Pa, zero at the edge
+                    iota=lambda rho: 2.0 + 0 * rho)
     eps, S, k, lam = CASES[name]
     h = np.sqrt(4 * S**2 + eps**2)
     L = 2 * major_radius / (np.sqrt((h - eps) / 2) + np.sqrt((h + eps) / 2))  # axis semi-axes, eq. (3.27)
@@ -164,4 +193,7 @@ def case(name, major_radius=1.0, B_axis=1.0, inner_fraction=0.25):
     return dict(B=lambda x: b * sheared_B(x / L, eps, S, lam), title=f"sheared ι, case {name}",
                 axis=(L * np.sqrt((h - eps) / 2), L * np.sqrt((h + eps) / 2)),
                 surface=lambda t, z: L * sheared_surface(t, z, eps, S, lam, k),
-                inner=lambda t, z: L * sheared_surface(t, z, eps, S, lam, np.sqrt(inner_fraction) * k))
+                inner=lambda t, z: L * sheared_surface(t, z, eps, S, lam, np.sqrt(inner_fraction) * k),
+                family=lambda t, z, rho: L * sheared_surface(t, z, eps, S, lam, rho * k),  # rho^2 = psi/psi_edge
+                pressure=lambda rho: b**2 / MU0 * k**2 / 2 * (1 - rho**2) / lam**2,  # Pa, zero at the edge
+                iota=lambda rho: sheared_iota(eps, S, rho * k))

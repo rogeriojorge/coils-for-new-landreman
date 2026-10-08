@@ -30,8 +30,8 @@ coils0 = initial_coils(t, N_COILS, ORDER, N_SEGMENTS, 1.0, COIL_MINOR_RADIUS, ax
 
 """ Objective and constraints """
 def mismatch(dofs):
-    dB, Bn = residuals(coils0.with_dofs(dofs), t)
-    return FIELD_SCALE * jnp.concatenate([dB.ravel() / np.sqrt(len(dB)), Bn.ravel() / np.sqrt(Bn.size)])
+    dB, dBb = residuals(coils0.with_dofs(dofs), t)
+    return FIELD_SCALE * jnp.concatenate([dB.ravel() / np.sqrt(len(dB)), dBb.ravel() / np.sqrt(dBb.size // 3)])
 
 pick = lambda key: lambda dofs: constraints(coils0.with_dofs(dofs), t, LIMITS, N_COILS)[key]
 C = alm.combine(*[alm.eq(pick(k), model_lagrangian=AL["model_lagrangian"], omega=INNER_TOL)
@@ -48,7 +48,7 @@ for i in range(OUTER_ITERATIONS):
     coils = coils0.with_dofs(params[0])
     history.append({k: float(v) for k, v in terms(coils, t, LIMITS, N_COILS).items()})
     snapshots.append((i + 1, np.asarray(coils.gamma), float(jnp.mean(jnp.linalg.norm(residuals(coils, t)[0], axis=1)))))
-    print(f"  outer {i + 1}: field {history[-1]['field']:.2e}, normal {history[-1]['normal']:.2e}, "
+    print(f"  outer {i + 1}: field {history[-1]['field']:.2e}, boundary {history[-1]['boundary']:.2e}, "
           f"infeasibility {alm.total_infeasibility(info[2]):.2e}, |grad| {jnp.linalg.norm(grad[0]):.2e}")
     if jnp.linalg.norm(grad[0]) < AL["omega_tol"] and alm.norm_constraints(info[2]) < AL["eta_tol"]:
         break

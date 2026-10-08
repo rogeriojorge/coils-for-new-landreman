@@ -10,7 +10,7 @@ eq = case("iota2", major_radius=1.0, B_axis=1.0, inner_fraction=0.25)  # interio
 N_COILS, ORDER, N_SEGMENTS, COIL_MINOR_RADIUS = 5, 4, 100, 0.55
 LIMITS = dict(length=4.0, curvature=4.0, msc=9.0, total_curvature=3 * np.pi, arclength=0.05,
               coil_distance=0.12, surface_distance=0.2)  # m, 1/m, 1/m^2, rad, -, m, m
-WEIGHTS = dict(field=1e4, normal=1e4, length=1e2, curvature=1e1, msc=1e1, total_curvature=1e1, arclength=1e-2,
+WEIGHTS = dict(field=1e4, boundary=1e4, length=1e2, curvature=1e1, msc=1e1, total_curvature=1e1, arclength=1e-2,
                coil_distance=1e3, surface_distance=1e3, linking=1e1)
 MAXITER = 1000
 

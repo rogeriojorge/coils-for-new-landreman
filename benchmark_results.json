@@ -1,0 +1,24 @@
+{
+ "D": {
+  "fixed": {
+   "converged": false,
+   "iterations": 30000,
+   "fsq": 1.0883728827941307e-09,
+   "beta": 0.07267953700078472,
+   "boundary_deviation_mean_mm": 0.08110783953098166,
+   "boundary_deviation_max_mm": 0.1549414434292018,
+   "boundary_deviation_over_minor_radius": 0.0012940283168956807,
+   "iota_max_relative_error": 0.002567681973669078
+  },
+  "free": {
+   "converged": false,
+   "iterations": 30000,
+   "fsq": 0.0002505662737159742,
+   "beta": 0.07308529294904052,
+   "boundary_deviation_mean_mm": 2.6985918842366567,
+   "boundary_deviation_max_mm": 6.2508273315323315,
+   "boundary_deviation_over_minor_radius": 0.052205190502980794,
+   "iota_max_relative_error": 0.012507122814191196
+  }
+ }
+}

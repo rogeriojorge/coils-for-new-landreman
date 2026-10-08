@@ -1,0 +1,138 @@
+"""VMEX benchmark of the analytic equilibrium and the optimized coils.
+
+VMEX gets the analytic profiles (toroidal flux, pressure p(s), enclosed toroidal current I(s)) and either the exact
+boundary (fixed boundary) or only the coils (free boundary). Flux surfaces and iota(s) are compared with the exact
+solution. The free-boundary solve does not converge for these current-carrying equilibria: the vertical-field decay
+index at the axis, printed below, exceeds the 3/2 limit for radial stability, so the plasma has no stable radial
+position (VMEC2000 behaves the same). The run reports the quasi-stationary state reached."""
+import json
+from dataclasses import replace
+import numpy as np
+import jax
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import vmex as vj
+from vmex.core.plotting import surface_rz
+from essos.coils import Coils
+from essos.fields import BiotSavart
+from landreman_equilibria import case, section_zeta, boundary_fourier, NFP, MU0
+
+""" Benchmark parameters """
+CASES = dict(D="coils_sheared_D.json")
+NRHO, NTHETA, PROFILE_DEGREE = 16, 64, 8      # analytic profile samples and polynomial degree in s
+MPOL, NTOR, NZETA, NS = 5, 5, 16, 11          # VMEX resolution (NZETA >= 2 NTOR + 4 and divides the mgrid planes)
+NS_ARRAY, NITER, FTOL, DELT = (NS,), (30000,), (1e-10,), 0.1  # best free-boundary settings found
+GRID = dict(rmin=0.3, rmax=1.7, zmin=-0.7, zmax=0.7, ir=128, jz=128, kp=32)
+PHIS = (0.0, np.pi / 4, np.pi / 2)            # cross-sections (one field period is pi)
+S_PLOT = (0.2, 0.5, 1.0)                      # flux surfaces drawn and compared (on the ns grid)
+
+
+def point(eq, theta, rho, phi):
+    """Exact point on the flux surface rho (rho^2 = psi / psi_edge) at the cylindrical angle phi."""
+    surface = lambda t, z: eq["family"](t, z, rho)
+    return surface(theta, section_zeta(surface, theta, phi))
+
+
+def profiles(eq, rho, nquad=24):
+    """Toroidal flux Phi(rho) [Wb] and enclosed toroidal current I(rho) [A], from the phi = 0 cross-section."""
+    theta = jnp.linspace(0, 2 * jnp.pi, NTHETA, endpoint=False)
+    jac = lambda t, r: jax.jacfwd(lambda a: point(eq, a[0], a[1], 0.))(jnp.array([t, r]))
+    det = lambda J: J[0, 0] * J[2, 1] - J[2, 0] * J[0, 1]  # d(R, Z)/d(theta, rho); at phi = 0, R = x, phi-hat = y
+
+    def flux(r):
+        x, w = np.polynomial.legendre.leggauss(nquad)
+        density = jax.vmap(lambda q: jax.vmap(lambda t: eq["B"](point(eq, t, q, 0.))[1] * jnp.abs(det(jac(t, q))))(theta))
+        return jnp.sum(w[:, None] * density(r * (x + 1) / 2)) * r / 2 * 2 * jnp.pi / NTHETA
+
+    def current(r):  # Ampere's law; theta counterclockwise in (R, Z) (det < 0) has normal -phi-hat
+        P = jax.vmap(lambda t: point(eq, t, r, 0.))(theta)
+        dP = jax.vmap(lambda t: jax.jacfwd(lambda a: point(eq, a, r, 0.))(t))(theta)
+        return jnp.sign(det(jac(0., r))) * jnp.sum(jax.vmap(eq["B"])(P) * dP) * 2 * jnp.pi / NTHETA / MU0
+    return np.array([float(flux(r)) for r in rho]), np.array([float(current(r)) for r in rho])
+
+
+def vmex_input(eq, rho, Phi, I):
+    """Free-boundary VMEX input from the analytic boundary and profiles, as polynomials in s = Phi / Phi_edge."""
+    s = Phi / Phi[-1]
+    am = np.polynomial.polynomial.polyfit(s, eq["pressure"](rho), PROFILE_DEGREE)
+    basis = np.stack([s**(i + 1) for i in range(PROFILE_DEGREE)], 1)  # power_series_i: I(s) = sum c_i s^(i+1)
+    ac = np.linalg.lstsq(basis, I / I[-1], rcond=None)[0]
+    rbc, zbs = (np.asarray(a) for a in boundary_fourier(eq["surface"], MPOL - 1, NTOR))
+    pad = lambda c: list(c) + [0.0] * (21 - len(c))
+    return vj.VmecInput(nfp=NFP, mpol=MPOL, ntor=NTOR, nzeta=NZETA, lfreeb=True, mgrid_file="essos_coils(direct)",
+                        ns_array=list(NS_ARRAY), niter_array=list(NITER), ftol_array=list(FTOL), phiedge=float(Phi[-1]),  # B along +phi; VMEC2000 rejects the opposite sign
+                        pmass_type="power_series", am=pad(am), pres_scale=1.0,
+                        ncurr=1, pcurr_type="power_series_i", ac=pad(ac), curtor=float(I[-1]),
+                        rbc=rbc, zbs=zbs, raxis_c=rbc[NTOR:, 0], zaxis_s=-zbs[NTOR:, 0], delt=DELT)
+
+
+def wout(inp, res):
+    return vj.wout_from_state(inp=inp, state=res.state, fsqr=float(res.fsqr), fsqz=float(res.fsqz), fsql=float(res.fsql),
+                              niter=int(res.iterations), converged=bool(res.converged), vacuum_output=getattr(res, "vacuum", None))
+
+
+""" Running the benchmark """
+summary = {}
+for name, coil_file in CASES.items():
+    eq, coils = case(name), Coils.from_json(coil_file)
+    rho = np.linspace(0, 1, NRHO + 1)[1:]
+    Phi, I = profiles(eq, rho)
+    print(f"\n=== {eq['title']}: Phi_edge = {Phi[-1]:.4e} Wb, I_edge = {I[-1]:.4e} A, "
+          f"p_axis = {eq['pressure'](0.):.4e} Pa")
+    inp = vmex_input(eq, rho, Phi, I)
+    for phi in PHIS:  # vertical-field decay index n = -(R / B_Z) dB_Z/dR of the coils at the magnetic axis
+        axis = np.asarray(point(eq, 0., 0., phi)); R0 = float(np.hypot(*axis[:2]))
+        BZ = lambda R: float(BiotSavart(coils).B(jnp.array([R * np.cos(phi), R * np.sin(phi), axis[2]]))[2])
+        print(f"decay index at the axis, phi = {phi / np.pi:.2g} pi: n = {-R0 / BZ(R0) * (BZ(R0 + 1e-3) - BZ(R0 - 1e-3)) / 2e-3:.2f}")
+    fixed = vj.solve_multigrid(replace(inp, lfreeb=False, mgrid_file="NONE"), raise_on_max_iterations=False)
+    free = vj.solve_free_boundary_multigrid(inp, external_field=vj.MgridField.from_coils(coils, nfp=NFP, **GRID),
+                                            raise_on_max_iterations=False)
+    wouts = dict(fixed=wout(replace(inp, lfreeb=False, mgrid_file="NONE"), fixed), free=wout(inp, free))
+    for label, res in (("fixed boundary", fixed), ("free boundary", free)):
+        print(f"VMEX {label}: converged {bool(res.converged)}, {int(res.iterations)} iterations, "
+              f"fsq = {float(res.fsqr) + float(res.fsqz) + float(res.fsql):.1e}")
+
+    """ Comparison: flux surfaces at three planes and iota(s), fixed- and free-boundary """
+    s_of_rho = Phi / Phi[-1]
+    rho_of_s = lambda s: np.interp(s, np.r_[0, s_of_rho], np.r_[0, rho])
+    theta = np.linspace(0, 2 * np.pi, 181)
+    styles = dict(fixed=dict(color="tab:blue", ls=":", label="fixed-boundary VMEX"),
+                  free=dict(color="tab:red", ls="--", label="free-boundary VMEX, optimized coils"))
+    fig, axes = plt.subplots(1, len(PHIS) + 1, figsize=(4.0 * (len(PHIS) + 1), 4.0))
+    deviation = dict(fixed=[], free=[])
+    for ax, phi in zip(axes, PHIS):
+        for s in S_PLOT:
+            exact = np.asarray(jax.vmap(lambda t: point(eq, t, rho_of_s(s), phi))(jnp.asarray(theta)))
+            Re, Ze = np.hypot(exact[:, 0], exact[:, 1]), exact[:, 2]
+            ax.plot(Re, Ze, "k-", lw=1.2, label="analytic" if s == S_PLOT[0] else None)
+            for key, w in wouts.items():
+                R, Z = surface_rz(w, s_index=int(round(s * (NS - 1))), theta=theta, phi=np.array([phi]))
+                ax.plot(R[:, 0], Z[:, 0], lw=1.4, **{**styles[key], "label": styles[key]["label"] if s == S_PLOT[0] else None})
+                if s == 1.0:  # distance of each VMEX boundary point to the analytic boundary
+                    deviation[key] += list(np.min(np.hypot(R[:, 0, None] - Re[None], Z[:, 0, None] - Ze[None]), 1))
+        ax.set(title=f"φ = {phi / np.pi:.2g}π", xlabel="R [m]", ylabel="Z [m]", aspect="equal")
+    axes[0].legend(fontsize=7)
+    s_full = np.linspace(0, 1, NS)
+    iota_exact = np.array([float(eq["iota"](rho_of_s(s))) for s in s_full[1:]])
+    axes[-1].plot(s_full[1:], iota_exact, "k-", label="analytic")
+    for key, w in wouts.items():
+        axes[-1].plot(s_full[1:], np.abs(np.asarray(w.iotaf))[1:], lw=1.4, **styles[key])
+    axes[-1].set(title="rotational transform", xlabel="s = Φ/Φ_edge", ylabel="ι"); axes[-1].legend(fontsize=7)
+    fig.suptitle(f"{eq['title']}: analytic equilibrium vs VMEX")
+    plt.tight_layout(); plt.savefig(f"benchmark_{name}.png", dpi=120); plt.close(fig)
+
+    minor = float(np.sqrt(abs(Phi[-1]) / (np.pi * jnp.linalg.norm(eq["B"](eq["family"](0., 0., 0.))))))  # rough minor radius
+    summary[name] = {}
+    for key, res in (("fixed", fixed), ("free", free)):
+        iota_vmex = np.abs(np.asarray(wouts[key].iotaf))[1:]
+        summary[name][key] = dict(converged=bool(res.converged), iterations=int(res.iterations),
+                                  fsq=float(res.fsqr) + float(res.fsqz) + float(res.fsql),
+                                  beta=float(wouts[key].betatotal),
+                                  boundary_deviation_mean_mm=1e3 * float(np.mean(deviation[key])),
+                                  boundary_deviation_max_mm=1e3 * float(np.max(deviation[key])),
+                                  boundary_deviation_over_minor_radius=float(np.max(deviation[key])) / minor,
+                                  iota_max_relative_error=float(np.max(np.abs(iota_vmex / iota_exact - 1))))
+        print(f"Benchmark {key}:", {k: (f"{v:.3e}" if isinstance(v, float) else v) for k, v in summary[name][key].items()})
+
+json.dump(summary, open("benchmark_results.json", "w"), indent=1)
+print("Wrote benchmark_<case>.png and benchmark_results.json")

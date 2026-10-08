@@ -1,2 +1,3 @@
 essos @ git+https://github.com/uwplasma/ESSOS
 virtual-casing-jax>=0.0.10
+vmex>=0.11.9  # benchmark_vmex.py only
