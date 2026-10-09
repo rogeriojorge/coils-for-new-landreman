@@ -22,6 +22,7 @@ python optimize_coils_iota2_augmented_lagrangian.py         # ι = 2, augmented 
 python optimize_coils_sheared_iota.py                       # sheared ι, CASE = "A", "B", "D" or "E"
 python optimize_coils_sheared_iota_augmented_lagrangian.py  # sheared ι, augmented Lagrangian
 python scan_coils.py                                        # coil count / curvature / length / loop-cap scan
+python scan_fewer_coils.py                                  # 2-4 coils per half period at the final limits
 python benchmark_vmex.py                                    # fixed- and free-boundary (Newton) VMEX vs the analytic solution
 python validate_fieldlines.py                               # field lines with the coils vs the analytic surfaces
 pytest -q                                                   # machine-precision checks of the equilibria
@@ -37,6 +38,7 @@ B·n error, plus convergence) and `coils_<case>.gif` (the optimization).
 | `coil_optimization.py` | targets, objective terms, constraints, penalty optimizer, report, figure and movie |
 | `optimize_coils_*.py` | one script per family and method |
 | `scan_coils.py` | parameter scans (`scan_results.json`, `scan.png`, `scan_loop_cap.png`) |
+| `scan_fewer_coils.py` | 2–4 coils per half period at the final limits (`scan_fewer_results.json`, `scan_fewer.png`) |
 | `benchmark_vmex.py` | VMEX benchmark (`benchmark_<case>.png`, `benchmark_results.json`, `wout_free_<case>.nc`) |
 | `vmex_newton.py` | free-boundary VMEX by Newton, with a count of unstable ideal-MHD modes |
 | `validate_fieldlines.py` | Poincaré sections with the coils vs analytic and free-boundary surfaces (`fieldlines_<case>.png`) |
@@ -173,6 +175,33 @@ and D, but takes 5–14× longer. Figures: `coils_<case>_al.png`.
   6 the extra freedom pays off: A drops from 4.8% to 0.6% maximum B·n error (Results above), so
   A's earlier floor was set by the coil limits, not by the equilibrium.
 
+### Fewer coils
+
+`scan_fewer_coils.py` repeats the final optimization (order 6, curvature ≤ 5 m⁻¹, total curvature
+≤ 5π, 1500 iterations) with 2–4 coils per half period. It lets the coils grow to 4.5 m or 6 m.
+
+![fewer coils](scan_fewer.png)
+
+| case | 2 coils, 6 m | 3 coils, 6 m | 4 coils, 6 m | 6 coils, 4.5 m |
+| --- | --- | --- | --- | --- |
+| ι = 2 | 2.3e-2 | 4.3e-3 | 4.7e-3 | 4.7e-3 |
+| sheared A | 5.1e-2 | 1.3e-2 | 6.1e-3 | 6.1e-3 |
+| sheared D | 1.3e-2 | 5.6e-3 | 2.0e-3 | 8.4e-4 |
+| sheared E | 1.4e-2 | 4.0e-3 | 1.7e-3 | 6.4e-4 |
+
+*Maximum boundary \|ΔB·n\|/\|B\|.*
+
+- **ι = 2:** 3 coils per half period (12 in total) at 6 m match 6 coils. The maximum is set by the
+  inboard spot.
+- **A:** 4 coils at 6 m (16 in total, 96 m of conductor) match 6 coils at 4.5 m (24 coils, 108 m).
+- **D and E:** each coil removed costs about 2.5×. 4 coils at 6 m still hold B·n to 0.2%, and 3
+  coils to 0.4–0.6%.
+- With 2 coils no case gets below 1%.
+- Longer coils matter more as the coil count drops. At 3 coils, going from 4.5 m to 6 m gains
+  1.6–3×.
+
+The coils of every point are saved as `scan_fewer_<case>_<n>_<length>.json`.
+
 ## Validation
 
 **Field lines.** `validate_fieldlines.py` traces field lines of B + (B_coils,ESSOS − B_coils,exact).
@@ -215,7 +244,10 @@ Figures for the other cases: `benchmark_A.png`, `benchmark_D.png`.
 - Fixed-boundary VMEX reproduces the analytic equilibria.
 - Free-boundary VMEX converges (|F| ≈ 2e-13) within a few mm of the analytic boundary, and ι is
   within 0.5%. The coil field lines stay much closer than that, within about 2 mm for D and E. The
-  difference is a coherent shift that the unstable equilibrium is sensitive to.
+  difference is a coherent shift, not a resolution effect. For D, a 256 × 256 mgrid or 64 toroidal
+  planes change it by under 2% (3.03 → 3.02 mm mean, 6.45 → 6.34 mm max), with the same 7 unstable
+  modes. It grows with the coil error (E 4.9 mm, D 6.4 mm, A 11.4 mm), as expected for an unstable
+  equilibrium. Free boundary amplifies small field errors along the unstable directions.
 - These equilibria are ideal-MHD unstable. The coils' vertical field has decay index
   n = −(R/B_Z) ∂B_Z/∂R = 2.4–9.5 at the axis, above the 3/2 limit for radial stability of a
   ~300 kA plasma. The coils match the external field closely, so this index belongs to the
@@ -250,7 +282,7 @@ fixes. NZETA must be at least 2·NTOR + 4.
 | --- | --- | --- |
 | coils, penalty | `python optimize_coils_iota2.py`, `python optimize_coils_sheared_iota.py` (`CASE`) | about 10 min each |
 | coils, augmented Lagrangian | the `*_augmented_lagrangian.py` scripts | 7–15 min each |
-| parameter scans | `python scan_coils.py` | about 1.5 h |
+| parameter scans | `python scan_coils.py`, `python scan_fewer_coils.py` | about 1.5 h, about 3 h |
 | VMEX benchmark | `python benchmark_vmex.py` | about 30 min |
 | field lines | `python validate_fieldlines.py` | about 1.5 h (4 cases) |
 
