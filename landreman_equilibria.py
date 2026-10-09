@@ -147,6 +147,30 @@ def boundary_target(surface, B, ntheta=32, nphi=32, digits=4):
     return gamma, normal, jnp.moveaxis(B_ext.reshape(3, nphi, ntheta), 0, -1), B_total
 
 
+def point(eq, theta, rho, phi):
+    """Exact point on the flux surface rho (rho^2 = psi / psi_edge) at the cylindrical angle phi."""
+    surface = lambda t, z: eq["family"](t, z, rho)
+    return surface(theta, section_zeta(surface, theta, phi))
+
+
+def flux_profiles(eq, rho, ntheta=64, nquad=24):
+    """Toroidal flux Phi(rho) [Wb] and enclosed toroidal current I(rho) [A] through the phi = 0 cross-section."""
+    theta = jnp.linspace(0, 2 * jnp.pi, ntheta, endpoint=False)
+    jac = lambda t, r: jax.jacfwd(lambda a: point(eq, a[0], a[1], 0.))(jnp.array([t, r]))
+    det = lambda J: J[0, 0] * J[2, 1] - J[2, 0] * J[0, 1]  # d(R, Z)/d(theta, rho); at phi = 0, R = x, phi-hat = y
+
+    def flux(r):
+        x, w = np.polynomial.legendre.leggauss(nquad)
+        density = jax.vmap(lambda q: jax.vmap(lambda t: eq["B"](point(eq, t, q, 0.))[1] * jnp.abs(det(jac(t, q))))(theta))
+        return jnp.sum(w[:, None] * density(r * (x + 1) / 2)) * r / 2 * 2 * jnp.pi / ntheta
+
+    def current(r):  # Ampere's law; theta counterclockwise in (R, Z) (det < 0) has normal -phi-hat
+        P = jax.vmap(lambda t: point(eq, t, r, 0.))(theta)
+        dP = jax.vmap(lambda t: jax.jacfwd(lambda a: point(eq, a, r, 0.))(t))(theta)
+        return jnp.sign(det(jac(0., r))) * jnp.sum(jax.vmap(eq["B"])(P) * dP) * 2 * jnp.pi / ntheta / MU0
+    return np.array([float(flux(r)) for r in rho]), np.array([float(current(r)) for r in rho])
+
+
 def boundary_fourier(surface, mpol, ntor, ntheta=64, nphi=64):
     """Stellarator-symmetric VMEC tables rbc, zbs [n + ntor, m] of surface(theta, zeta) in the cylindrical angle."""
     gamma = boundary(surface, ntheta, nphi)[0]

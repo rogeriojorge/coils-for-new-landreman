@@ -22,7 +22,7 @@ python optimize_coils_iota2_augmented_lagrangian.py         # ι = 2, augmented 
 python optimize_coils_sheared_iota.py                       # sheared ι, CASE = "A", "B", "D" or "E"
 python optimize_coils_sheared_iota_augmented_lagrangian.py  # sheared ι, augmented Lagrangian
 python scan_coils.py                                        # coil count / curvature / length / loop-cap scan
-python benchmark_vmex.py                                    # fixed- and free-boundary VMEX vs the analytic solution
+python benchmark_vmex.py                                    # fixed- and free-boundary (Newton) VMEX vs the analytic solution
 python validate_fieldlines.py                               # field lines with the coils vs the analytic surfaces
 pytest -q                                                   # machine-precision checks of the equilibria
 ```
@@ -37,8 +37,9 @@ B·n error, plus convergence) and `coils_<case>.gif` (the optimization).
 | `coil_optimization.py` | targets, objective terms, constraints, penalty optimizer, report, figure and movie |
 | `optimize_coils_*.py` | one script per family and method |
 | `scan_coils.py` | parameter scans (`scan_results.json`, `scan.png`, `scan_loop_cap.png`) |
-| `benchmark_vmex.py` | VMEX benchmark (`benchmark_D.png`, `benchmark_results.json`) |
-| `validate_fieldlines.py` | field-line check of the coils (`fieldlines_D.png`) |
+| `benchmark_vmex.py` | VMEX benchmark (`benchmark_<case>.png`, `benchmark_results.json`, `wout_free_<case>.nc`) |
+| `vmex_newton.py` | free-boundary VMEX by Newton, with a count of unstable ideal-MHD modes |
+| `validate_fieldlines.py` | Poincaré sections with the coils vs analytic and free-boundary surfaces (`fieldlines_<case>.png`) |
 | `tests/test_equilibria.py` | div B = 0, J × B = ∇p, B·∇ψ = 0, B·n = 0 on the boundary, ι(0) from the paper, vacuum coil field |
 
 ## Equilibria
@@ -79,53 +80,71 @@ A 32 × 32 grid at 4 digits is converged to about 1e-6 of |B|.
   balance a free-boundary equilibrium needs.
 
 The engineering limits are:
-- length ≤ 4 m and curvature ≤ 4 m⁻¹;
-- mean squared curvature ≤ 9 m⁻²;
-- total curvature ∫κ dl ≤ 3π (each loop adds 2π);
+- length ≤ 4.5 m and curvature ≤ 5 m⁻¹;
+- mean squared curvature ≤ 14 m⁻²;
+- total curvature ∫κ dl ≤ 5π (each loop adds 2π);
 - arclength variation;
 - coil–coil distance ≥ 0.12 m and coil–plasma distance ≥ 0.2 m;
 - zero linking number.
 
-The coils start as circles, 5 per half period (20 in total), Fourier order 4. For the sheared
+The coils start as circles, 6 per half period (24 in total), Fourier order 6. For the sheared
 cases they are centred on the elliptical axis. All gradients are exact (JAX).
 
 **Methods.**
-- *Penalty*: the limits are weighted penalties, minimized with L-BFGS-B (1000 iterations).
+- *Penalty*: the limits are weighted penalties, minimized with L-BFGS-B (3000 iterations).
 - *Augmented Lagrangian*: the field mismatch is the objective and each limit is a constraint,
   max(value − limit, 0) = 0, with its own multiplier (`essos.augmented_lagrangian`). It runs
-  10 outer iterations of up to 400 inner L-BFGS-B iterations each.
+  10 outer iterations of up to 400 inner L-BFGS-B iterations each. The augmented-Lagrangian
+  scripts keep the earlier limits (5 coils, order 4, length 4 m, curvature 4 m⁻¹, total curvature
+  3π), so they are compared with penalty runs at those limits.
 
 ## Results
 
-| case | method | interior \|ΔB\|/\|B\| mean / max | boundary \|ΔB·n\|/\|B\| mean / max | boundary \|ΔB\|/\|B\| max | max κ (m⁻¹) | time |
-| --- | --- | --- | --- | --- | --- | --- |
-| ι = 2 | penalty | 3.4e-4 / 9.3e-4 | 6.2e-4 / 4.7e-3 | 6.6e-2 | 4.02 | 94 s |
-| ι = 2 | augmented Lagrangian | 2.7e-4 / 8.6e-4 | 5.4e-4 / 4.6e-3 | 6.6e-2 | 4.00 | 430 s |
-| sheared A | penalty | 3.9e-3 / 9.8e-3 | 8.7e-3 / 4.8e-2 | 5.1e-2 | 4.56 | 65 s |
-| sheared A | augmented Lagrangian | 4.9e-3 / 1.0e-2 | 1.2e-2 / 5.2e-2 | 5.4e-2 | 4.01 | 854 s |
-| sheared D | penalty | 1.2e-3 / 2.5e-3 | 3.1e-3 / 9.2e-3 | 9.7e-3 | 4.09 | 62 s |
-| sheared D | augmented Lagrangian | 1.2e-3 / 3.0e-3 | 3.2e-3 / 9.7e-3 | 1.0e-2 | 4.00 | 867 s |
+Penalty method, final limits (6 coils per half period, length 4.5 m, curvature 5 m⁻¹, total
+curvature 5π, 3000 iterations, about 10 min each):
 
-| | penalty | augmented Lagrangian |
-| --- | --- | --- |
-| ι = 2 | ![](coils_iota2.png) | ![](coils_iota2_al.png) |
-| sheared A | ![](coils_sheared_A.png) | ![](coils_sheared_A_al.png) |
-| sheared D | ![](coils_sheared_D.png) | ![](coils_sheared_D_al.png) |
+| case | interior \|ΔB\|/\|B\| mean / max | boundary \|ΔB·n\|/\|B\| mean / max | boundary \|ΔB\|/\|B\| max | max κ (m⁻¹) |
+| --- | --- | --- | --- | --- |
+| ι = 2 | 8.7e-5 / 2.7e-4 | 1.7e-4 / 4.8e-3 | 6.5e-2 | 5.00 |
+| sheared A | 4.8e-4 / 1.5e-3 | 1.8e-3 / 6.1e-3 | 6.6e-3 | 5.13 |
+| sheared D | 6.2e-5 / 1.5e-4 | 1.9e-4 / 7.0e-4 | 7.5e-4 | 5.01 |
+| sheared E | 4.1e-5 / 8.5e-5 | 1.3e-4 / 4.8e-4 | 5.5e-4 | 5.00 |
+
+| ι = 2 | sheared A |
+| --- | --- |
+| ![](coils_iota2.png) | ![](coils_sheared_A.png) |
+| **sheared D** | **sheared E** |
+| ![](coils_sheared_D.png) | ![](coils_sheared_E.png) |
 
 Movies of every run: `coils_<case>.gif` and `coils_<case>_al.gif`.
 
-- Case D's coils hold the whole boundary field to 1% with a strongly elliptical axis.
-- The augmented Lagrangian meets every limit exactly and matches the penalty field error for ι = 2
-  and D. The penalty method gets A slightly better by letting curvature reach 4.56 m⁻¹. The
-  augmented Lagrangian takes 5–14× longer.
-- For ι = 2, the boundary field error is 6.6% at a few points on the inboard midplane near φ = 0,
-  where |B| is highest. This is the same for every coil set. The target there is converged to
-  1e-6, so it is a limit of the coils, not of the target.
-- Mean coil forces are 1.0–1.8 × 10⁵ N/m. They are reported, not penalized.
+- D and E hold the whole boundary field to better than 0.1%, A to 0.7%.
+- Relaxing the limits, mainly the loop cap (3π → 5π total curvature) together with 6 coils of
+  order 6, cuts the errors 4–20× from the earlier limits below. 8 coils per half period gain only
+  25% more.
+- For ι = 2, the boundary field error is 6.5% at a few points on the inboard midplane near φ = 0,
+  where |B| is highest, for every coil set tried. The target there is converged to 1e-6, so it is
+  a limit of the coils, not of the target. Elsewhere it is below 0.5%.
+- Coil forces are reported, not penalized.
+
+**Augmented Lagrangian vs penalty**, at the earlier limits (5 coils, order 4, length 4 m,
+curvature 4 m⁻¹, total curvature 3π, penalty 1000 iterations):
+
+| case | method | interior mean / max | boundary B·n mean / max | max κ (m⁻¹) | time |
+| --- | --- | --- | --- | --- | --- |
+| ι = 2 | penalty | 3.4e-4 / 9.3e-4 | 6.2e-4 / 4.7e-3 | 4.02 | 94 s |
+| ι = 2 | augmented Lagrangian | 2.7e-4 / 8.6e-4 | 5.4e-4 / 4.6e-3 | 4.00 | 430 s |
+| sheared A | penalty | 3.9e-3 / 9.8e-3 | 8.7e-3 / 4.8e-2 | 4.56 | 65 s |
+| sheared A | augmented Lagrangian | 4.9e-3 / 1.0e-2 | 1.2e-2 / 5.2e-2 | 4.01 | 854 s |
+| sheared D | penalty | 1.2e-3 / 2.5e-3 | 3.1e-3 / 9.2e-3 | 4.09 | 62 s |
+| sheared D | augmented Lagrangian | 1.2e-3 / 3.0e-3 | 3.2e-3 / 9.7e-3 | 4.00 | 867 s |
+
+The augmented Lagrangian meets every limit exactly and matches the penalty field error for ι = 2
+and D, but takes 5–14× longer. Figures: `coils_<case>_al.png`.
 
 ## Parameter scan
 
-`scan_coils.py` runs the penalty optimization (500 iterations) for:
+`scan_coils.py` runs the penalty optimization (500 iterations, 5-coil order-4 limits) for:
 - every combination of 3–6 coils per half period, curvature limit 3–5 m⁻¹ and length limit
   3–5 m (108 runs);
 - case A with total-curvature caps of 1.25–3·2π.
@@ -150,44 +169,76 @@ Movies of every run: `coils_<case>.gif` and `coils_<case>_al.gif`.
 ![loop cap](scan_loop_cap.png)
 
 - **Loop cap (case A):** removing the cap lets the coils reach 1.87·2π, which improves the error
-  by only 8%. Tightening it to 1.25·2π costs 1.4–2×. A's 4–5% floor comes from the equilibrium
-  (ι ≈ 5.7), not from the coil limits.
+  by only 8% at 5 coils of order 4. Tightening it to 1.25·2π costs 1.4–2×. With 6 coils of order
+  6 the extra freedom pays off: A drops from 4.8% to 0.6% maximum B·n error (Results above), so
+  A's earlier floor was set by the coil limits, not by the equilibrium.
 
 ## Validation
 
-**Field lines.** `validate_fieldlines.py` traces field lines of B + (B_coils,ESSOS − B_coils,exact)
-for case D. The plasma currents are held at their analytic values, and the coil-field error is
-tabulated against the exact interior field and fitted smoothly. The traced lines stay on nested
-surfaces 1.0–3.5 mm (mean) from the analytic ones, 7.5 mm at most, from ρ = 0.2 to 0.8, with no
-islands. ι changes by 0.08%.
+**Field lines.** `validate_fieldlines.py` traces field lines of B + (B_coils,ESSOS − B_coils,exact).
+The plasma currents are held at their analytic values. The coil-field error is tabulated against the
+exact interior field (accurate to 1e-11 or better) and fitted smoothly. Each figure overlays three
+things: the analytic surfaces (black), the traced field lines (red) and the free-boundary VMEX
+surfaces with the same coils (blue dashed).
 
-![field lines](fieldlines_D.png)
+| case | coil \|ΔB\|/\|B\| inside | field lines from analytic surfaces, mean / max |
+| --- | --- | --- |
+| sheared A | 4e-4 – 1.4e-3 | 3.95 / 25.8 mm |
+| sheared D | 4e-5 – 1.8e-4 | 0.63 / 2.29 mm |
+| sheared E | 2.6e-5 – 1.2e-4 | 0.57 / 1.98 mm |
+
+| | |
+| --- | --- |
+| ![](fieldlines_D.png) | ![](fieldlines_E.png) |
+| ![](fieldlines_A.png) | ![](fieldlines_iota2.png) |
+
+- For D and E the field lines lie on the analytic surfaces to within about 2 mm, with no islands.
+- For A, the lines near s = 0.7 spread into a band a few cm wide. A has high ι (≈ 5.7) and
+  β ≈ 20%, so the remaining 0.1% field error resonates more strongly there.
+- ι = 2 has closed field lines on every surface, so any error breaks the surfaces into short arcs.
+  This is expected.
 
 **VMEX.** `benchmark_vmex.py` gives VMEX the analytic profiles: toroidal flux, pressure p(s) and
 enclosed current I(s). It runs a fixed-boundary solve on the exact boundary and a free-boundary
 solve with only the coils.
 
-![VMEX benchmark](benchmark_D.png)
+![VMEX benchmark](benchmark_E.png)
 
-| case D | boundary deviation mean / max | ι error | residual |
+| case | fixed boundary: deviation mean / max, ι error | free boundary (Newton): deviation mean / max, ι error | unstable modes |
 | --- | --- | --- | --- |
-| fixed boundary (exact boundary) | 0.08 / 0.15 mm | 0.26% | 1.1e-9 |
-| free boundary (coils), quasi-stationary state | 2.7 / 6.3 mm | 1.3% | 2.5e-4, not converged |
+| sheared A | 0.47 / 0.87 mm, 0.28% | 3.9 / 11.4 mm, 0.50% | 8 |
+| sheared D | 0.08 / 0.15 mm, 0.26% | 3.0 / 6.4 mm, 0.44% | 7 |
+| sheared E | 0.09 / 0.16 mm, 0.31% | 2.6 / 4.9 mm, 0.49% | 6 |
 
-- Fixed-boundary VMEX reproduces the analytic equilibrium. Case E converges to 1.7e-10, 0.16 mm
-  and 0.3%.
-- Free-boundary VMEX settles within millimetres of the analytic boundary, consistent with the field
-  lines, but it never converges. The plasma drifts radially. VMEC2000 does the same on the same
-  input.
-- The coils' vertical field has decay index n = −(R/B_Z) ∂B_Z/∂R = 2.4–8.9 at the axis, above the
-  3/2 limit for radial stability of a current-carrying plasma. The coils match the exact external
-  field to 1%, so this index belongs to the equilibrium. These ~300 kA equilibria have no stable
-  radial position, and VMEC, an energy minimizer, cannot settle on them.
+Figures for the other cases: `benchmark_A.png`, `benchmark_D.png`.
+
+- Fixed-boundary VMEX reproduces the analytic equilibria.
+- Free-boundary VMEX converges (|F| ≈ 2e-13) within a few mm of the analytic boundary, and ι is
+  within 0.5%. The coil field lines stay much closer than that, within about 2 mm for D and E. The
+  difference is a coherent shift that the unstable equilibrium is sensitive to.
+- These equilibria are ideal-MHD unstable. The coils' vertical field has decay index
+  n = −(R/B_Z) ∂B_Z/∂R = 2.4–9.5 at the axis, above the 3/2 limit for radial stability of a
+  ~300 kA plasma. The coils match the external field closely, so this index belongs to the
+  equilibrium. The Newton solve finds 6–8 directions with δW < 0, including the radial shift.
 - [uwplasma/vmex#570](https://github.com/uwplasma/vmex/pull/570) adds vertical-field position
-  control. It removes the radial drift in case E and reaches residual 5e-8, but a helical axis
-  displacement then grows.
+  control. It removes the radial drift in case E, but a helical axis displacement then grows.
 - ι = 2 is not benchmarked: with ι exactly 2 everywhere, every field line closes on itself, and
   VMEC cannot converge to that with pressure.
+
+**Newton vs descent.** VMEX's default solver is steepest descent on the MHD energy, and it should
+stay the default. It is robust from a cold start, compiles fast and uses little memory. It cannot
+settle on an unstable equilibrium, though: these free-boundary runs drift instead of converging.
+`vmex_newton.free_boundary_newton(inp, coils, grid)` takes over in that case:
+1. It runs descent on the fixed-boundary problem, to about 3e-9.
+2. It solves the free-boundary force balance by Newton: a Krylov anchor, then dense damped steps.
+3. It reaches |F| ≈ 1e-13 and returns the wout.
+4. From the eigenvalues of the force Jacobian it returns the number of unstable modes and their
+   (m, n).
+
+Use it when a free-boundary solve stalls, or when you need residuals far below 1e-10. Always start
+it from a converged descent state; from cold, or from 1e-4, it is fragile. It costs 14–52 s of
+compile time and 1.5–3× the memory. Its converged equilibrium may be a saddle of the MHD energy,
+so check the returned unstable-mode count.
 
 VMEC sign conventions matter here. PHIEDGE must be +Φ (B along +φ) and curtor +I. VMEC2000 stops
 on the wrong sign; VMEX did not, which [uwplasma/vmex#571](https://github.com/uwplasma/vmex/pull/571)
@@ -197,11 +248,11 @@ fixes. NZETA must be at least 2·NTOR + 4.
 
 | result | command | time (laptop CPU) |
 | --- | --- | --- |
-| coils, penalty | `python optimize_coils_iota2.py`, `python optimize_coils_sheared_iota.py` (`CASE`) | 1–2 min each |
+| coils, penalty | `python optimize_coils_iota2.py`, `python optimize_coils_sheared_iota.py` (`CASE`) | about 10 min each |
 | coils, augmented Lagrangian | the `*_augmented_lagrangian.py` scripts | 7–15 min each |
 | parameter scans | `python scan_coils.py` | about 1.5 h |
-| VMEX benchmark | `python benchmark_vmex.py` | about 20 min |
-| field lines | `python validate_fieldlines.py` | about 15 min |
+| VMEX benchmark | `python benchmark_vmex.py` | about 30 min |
+| field lines | `python validate_fieldlines.py` | about 1.5 h (4 cases) |
 
 Peak memory is about 10 GB, mostly in the virtual-casing step. Run the scripts one at a time on a
 24 GB machine.
