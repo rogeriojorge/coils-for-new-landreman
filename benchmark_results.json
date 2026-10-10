@@ -169,5 +169,139 @@
    "boundary_deviation_over_minor_radius": 0.036649916453158175,
    "iota_max_relative_error": 0.004946368257135791
   }
+ },
+ "iota2_tau": {
+  "rho": [
+   0.0625,
+   0.125,
+   0.1875,
+   0.25,
+   0.3125,
+   0.375,
+   0.4375,
+   0.5,
+   0.5625,
+   0.625,
+   0.6875,
+   0.75,
+   0.8125,
+   0.875,
+   0.9375,
+   1.0
+  ],
+  "s": [
+   0.0039062499999999965,
+   0.015625000000000017,
+   0.03515625,
+   0.06250000000000014,
+   0.09765625000000004,
+   0.14062500000000022,
+   0.19140625000000042,
+   0.2500000000000003,
+   0.3164062500000006,
+   0.39062500000000033,
+   0.47265625,
+   0.5625000000000009,
+   0.6601562500000004,
+   0.7656250000000007,
+   0.8789062500000008,
+   1.0
+  ],
+  "fixed": {
+   "converged": true,
+   "residual": 1.6968364691946267e-10,
+   "beta": 0.04494725974778722,
+   "boundary_deviation_mean_mm": 0.5785231226548263,
+   "boundary_deviation_max_mm": 0.9408850876421969,
+   "boundary_deviation_over_minor_radius": 0.006682144486779574,
+   "iota_max_relative_error": 0.001482288509188523
+  },
+  "free": {
+   "converged": false,
+   "residual": 0.00852913543816275,
+   "unstable_modes": 12,
+   "beta": 0.04491531598862413,
+   "boundary_deviation_mean_mm": 3.3650241816434434,
+   "boundary_deviation_max_mm": 14.95878606321858,
+   "boundary_deviation_over_minor_radius": 0.10623695830033505,
+   "iota_max_relative_error": 0.0029540315028812048
+  },
+  "vacuum": {
+   "converged": false,
+   "residual": 0.01913083300823935,
+   "unstable_modes": 15,
+   "beta": 0.0,
+   "boundary_deviation_mean_mm": 13.069920753167608,
+   "boundary_deviation_max_mm": 27.854522681442294,
+   "boundary_deviation_over_minor_radius": 0.19782218637783067,
+   "iota_max_relative_error": 0.02661724649003472
+  }
+ },
+ "issan_tau": {
+  "rho": [
+   0.0625,
+   0.125,
+   0.1875,
+   0.25,
+   0.3125,
+   0.375,
+   0.4375,
+   0.5,
+   0.5625,
+   0.625,
+   0.6875,
+   0.75,
+   0.8125,
+   0.875,
+   0.9375,
+   1.0
+  ],
+  "s": [
+   0.003663874804733571,
+   0.014665507241187418,
+   0.0330350629029746,
+   0.05882329425400101,
+   0.09210227214171525,
+   0.1329664445801331,
+   0.18153406005090206,
+   0.23794900719425485,
+   0.30238314092561686,
+   0.3750391882246228,
+   0.4561543572115977,
+   0.5460048136828649,
+   0.6449112444708792,
+   0.7532458035050011,
+   0.871440844513197,
+   1.0
+  ],
+  "fixed": {
+   "converged": false,
+   "residual": 5.466513387491081e-07,
+   "beta": 0.21775837177965135,
+   "boundary_deviation_mean_mm": 2.3614116875011857,
+   "boundary_deviation_max_mm": 3.360125810805693,
+   "boundary_deviation_over_minor_radius": 0.0141370025586137,
+   "iota_max_relative_error": 0.009615971690857261
+  },
+  "free": {
+   "converged": false,
+   "residual": 0.00633653783946122,
+   "unstable_modes": 15,
+   "beta": 0.21669338439640082,
+   "boundary_deviation_mean_mm": 11.008351069056772,
+   "boundary_deviation_max_mm": 54.461649225410994,
+   "boundary_deviation_over_minor_radius": 0.22913560913998757,
+   "iota_max_relative_error": 0.008352238450855864
+  },
+  "vacuum": {
+   "converged": false,
+   "residual": 0.12050197925716492,
+   "unstable_modes": 11,
+   "beta": 0.0,
+   "boundary_deviation_mean_mm": 28.5771516603396,
+   "boundary_deviation_max_mm": 78.7560968944105,
+   "boundary_deviation_over_minor_radius": 0.3313492428534228,
+   "iota_max_relative_error": 0.06905843598716821
+  }
  }
 }

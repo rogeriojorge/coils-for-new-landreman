@@ -19,7 +19,7 @@ or an augmented Lagrangian, then checked against VMEX and by field-line tracing.
 pip install -r requirements.txt
 python optimize_coils_iota2.py                              # ι = 2, weighted penalties
 python optimize_coils_iota2_augmented_lagrangian.py         # ι = 2, augmented Lagrangian
-python optimize_coils_sheared_iota.py                       # sheared ι, CASE = "A", "B", "D" or "E"
+python optimize_coils_sheared_iota.py                       # sheared ι, case "A", "B", "D" or "E" as argument
 python optimize_coils_sheared_iota_augmented_lagrangian.py  # sheared ι, augmented Lagrangian
 python scan_coils.py                                        # coil count / curvature / length / loop-cap scan
 python scan_fewer_coils.py                                  # 2-4 coils per half period at the final limits
@@ -42,6 +42,7 @@ B·n error, plus convergence) and `coils_<case>.gif` (the optimization).
 | `benchmark_vmex.py` | VMEX benchmark (`benchmark_<case>.png`, `benchmark_results.json`, `wout_free_<case>.nc`) |
 | `vmex_newton.py` | free-boundary VMEX by Newton, with a count of unstable ideal-MHD modes |
 | `validate_fieldlines.py` | Poincaré sections with the coils vs analytic and free-boundary surfaces (`fieldlines_<case>.png`) |
+| `check_tau_coils.py` | non-symmetric cases: errors against a finer target, mirror check (`tau_results.json`) |
 | `tests/test_equilibria.py` | div B = 0, J × B = ∇p, B·∇ψ = 0, B·n = 0 on the boundary, ι(0) from the paper, vacuum coil field |
 
 ## Equilibria
@@ -275,6 +276,91 @@ so check the returned unstable-mode count.
 VMEC sign conventions matter here. PHIEDGE must be +Φ (B along +φ) and curtor +I. VMEC2000 stops
 on the wrong sign; VMEX did not, which [uwplasma/vmex#571](https://github.com/uwplasma/vmex/pull/571)
 fixes. NZETA must be at least 2·NTOR + 4.
+
+## Non-stellarator-symmetric equilibria (Issan et al.)
+
+[Issan et al., arXiv:2610.07304](https://arxiv.org/abs/2610.07304) add a parameter τ to both
+families that breaks stellarator symmetry and keeps the solution exact. τ → −τ is the image under
+the rotation by π about the x axis, (x, y, z) → (x, −y, −z), with B reversed. The cases follow
+[vmex-benchmark-analytical](https://github.com/rogeriojorge/vmex-benchmark-analytical)
+(`integer_3d_tau`, `sheared_issan_tau` and their mirrors), scaled to 1 m and 1 T as above:
+
+| case | parameters | ι | β | plasma-current share of B inside |
+| --- | --- | --- | --- | --- |
+| `iota2_tau` (`_mirror`) | ε = 1/2, ψ_edge = 1/64, τ = 0.5 (−0.5) | 2 | 4.5% | 17% |
+| `issan_tau` (`_mirror`) | ε, S, k_b, λ = 1.2, 1.4, √0.28, 1.6, τ = 0.4 (−0.4) | 2.65 → 2.64 | 22% | 35% |
+
+Neither family has a zero-pressure member, so there is no separate vacuum target: the coils
+match the exterior (virtual-casing) field of the finite-β equilibrium, and the same coil set is
+used for the vacuum and finite-β free-boundary runs below.
+
+```bash
+python optimize_coils_iota2.py iota2_tau                 # also iota2_tau_mirror
+python optimize_coils_sheared_iota.py issan_tau          # also issan_tau_mirror
+python check_tau_coils.py                                # fine-target errors and mirror check (tau_results.json)
+python benchmark_vmex.py iota2_tau issan_tau             # VMEX, LASYM = T
+```
+
+**What changes without symmetry.** The JAX fields, flux labels and surfaces take τ, and the tests
+check div B = 0, J × B = ∇p, B·n = 0 and the mirror map at τ ≠ 0. The optimization covers a full
+field period instead of half: 12 coils per period (24 in total, as before) with
+`stellsym=False`. ESSOS needed no change, and neither did the virtual-casing call, which already
+used full-period grids. VMEX gets LASYM = T with the rbs and zbc boundary tables. The penalties and
+limits are the same as for the symmetric cases.
+
+**Coils.** Errors against a finer target (64 × 64 per period, 6 digits) than the optimization used
+(32 × 32, 4 digits):
+
+| case | boundary \|ΔB·n\|/\|B\| mean / max | boundary \|ΔB\|/\|B\| max | interior \|ΔB\|/\|B\| mean / max | max κ (m⁻¹) |
+| --- | --- | --- | --- | --- |
+| `iota2_tau` | 1.4e-4 / 6.0e-4 | 7.5e-4 | 7.3e-5 / 2.5e-4 | 5.00 |
+| `iota2_tau_mirror` | 1.1e-4 / 5.0e-4 | 8.4e-4 | 4.9e-5 / 1.4e-4 | 5.00 |
+| `issan_tau` | 3.8e-4 / 3.2e-3 | 3.2e-3 | 1.0e-4 / 5.6e-4 | 5.01 |
+| `issan_tau_mirror` | 3.7e-4 / 3.1e-3 | 3.2e-3 | 1.0e-4 / 4.7e-4 | 5.01 |
+
+| ι = 2, τ = 0.5 | sheared, τ = 0.4 |
+| --- | --- |
+| ![](coils_iota2_tau.png) | ![](coils_sheared_issan_tau.png) |
+
+- All coils stay within the limits: length ≤ 4.5 m, curvature ≤ 5.01 m⁻¹, total curvature
+  ≤ 2.22·2π (cap 2.5·2π).
+- For ι = 2 the coarse target is the limit. Against it, `iota2_tau` shows a 1.6% boundary-field
+  error, but its 32 → 64 change is 1.5% of |B|. Against the fine target the error is 7.5e-4. For
+  `issan_tau` the coarse target agrees with the fine one to 2e-4.
+- **Mirror check.** Rotating the τ coils by π about x and reversing their currents gives exactly
+  the τ error on the −τ target (max B·n 6.026e-4 and 3.157e-3, the same to all printed digits). The
+  equilibria, targets and coil handling are mirror symmetric. The −τ coils optimized on their own
+  reach the same error, and their field agrees with the rotated τ coils to 8e-4 (ι = 2) and 2e-3
+  (sheared). Their shapes differ by up to 0.43 m and 0.21 m: the optimization is mirror
+  equivariant only in exact arithmetic, and round-off sends the two runs to different minima of
+  equal quality.
+
+**VMEX, LASYM = T.** Fixed boundary uses the exact boundary. Free boundary uses only the coils,
+with Newton (`vmex_newton.py`): at finite β with the analytic p(s) and I(s), and in "vacuum" with
+p = 0 and the same I(s).
+
+| case | fixed boundary: fsq, deviation mean / max | free, finite β: \|F\|, deviation mean / max | free, p = 0: \|F\|, deviation mean / max |
+| --- | --- | --- | --- |
+| `iota2_tau` | 1.7e-10, 0.58 / 0.94 mm | 8.5e-3, 3.4 / 15 mm | 1.9e-2, 13 / 28 mm |
+| `issan_tau` | 5.5e-7 (not converged), 2.4 / 3.4 mm | 6.3e-3, 11 / 54 mm | 1.2e-1, 29 / 79 mm |
+
+![VMEX, ι = 2, τ = 0.5](benchmark_iota2_tau.png)
+
+- **No free-boundary run converges** (`benchmark_issan_tau.png` shows the sheared case). Neither does
+  VMEX's descent (fsq ≈ 2e-6 after 30000 iterations, 13 / 44 mm for `iota2_tau`).
+- **The cause is not LASYM.** With LASYM = T forced, the symmetric case D converges by Newton to
+  |F| = 2.3e-13, as it does with LASYM = F. The symmetric ι = 2 case (τ = 0) fails the same way
+  with LASYM = F and T (descent fsq 1.3e-6 / 1.4e-6, 5.9 / 6.3 mm mean deviation). Constant
+  rational ι = 2 is what VMEX cannot settle, with or without symmetry.
+- **`issan_tau` needs more resolution.** Its fixed-boundary solve stalls at 5.5e-7 at MPOL = 5,
+  NTOR = 5, and at 3.4e-8 and 2.1e-8 with (6, 8) and (8, 12). The benchmark deck uses (17, 24).
+  The dense Newton Jacobian is impractical at that size, so the free-boundary numbers are an upper
+  bound set by the solver, not by the coils.
+- **Without pressure the shape moves 1–3 cm** at fixed current. For ι = 2, removing the current as
+  well leaves ι ≈ 0.05: ι is current-driven, so a p = I = 0 run has no surfaces to compare.
+- The coil decay index at the axis is 0.3, 0.15 and −0.6 (ι = 2), and −2.4, −2.6 and −0.2
+  (sheared). Unlike A, D and E (n = 2.4–9.5), neither case is radially unstable. n < 0
+  points to a vertical instability instead.
 
 ## Reproducing
 
