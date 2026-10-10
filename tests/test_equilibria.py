@@ -9,7 +9,11 @@ FAMILIES = {  # B(x), psi(x), surface(theta, zeta, edge fraction), dp/dpsi, edge
     "iota2": (lambda x: iota2_B(x, .5), lambda x: iota2_psi(x, .5),
               lambda t, z, f=1.: iota2_surface(t, z, .5, f / 64), -2., 1 / 64),
     "sheared": (lambda x: sheared_B(x, 4., 3.5, 3.5), lambda x: sheared_psi(x, 4., 3.5, 3.5),
-                lambda t, z, f=1.: sheared_surface(t, z, 4., 3.5, 3.5, .7 * f**.5), -1 / 3.5**2, .245)}
+                lambda t, z, f=1.: sheared_surface(t, z, 4., 3.5, 3.5, .7 * f**.5), -1 / 3.5**2, .245),
+    "iota2_tau": (lambda x: iota2_B(x, .5, .5), lambda x: iota2_psi(x, .5, .5),
+                  lambda t, z, f=1.: iota2_surface(t, z, .5, f / 64, .5), -2. / .75, 1 / 64),
+    "sheared_tau": (lambda x: sheared_B(x, 1.2, 1.4, 1.6, .4), lambda x: sheared_psi(x, 1.2, 1.4, 1.6, .4),
+                    lambda t, z, f=1.: sheared_surface(t, z, 1.2, 1.4, 1.6, (.28 * f)**.5, .4), -1 / 1.6**2, .14)}
 curl = lambda J: jnp.array([J[2, 1] - J[1, 2], J[0, 2] - J[2, 0], J[1, 0] - J[0, 1]])
 
 
@@ -35,3 +39,9 @@ def test_coil_field_is_vacuum():
     x = surface(1., .5, .25)
     J = jax.jacfwd(lambda y: coil_field(surface, B, y[None], 128, 2048)[0])(x)
     assert abs(jnp.trace(J)) < 1e-12 and jnp.max(jnp.abs(curl(J))) < 1e-9
+
+
+def test_tau_mirror():  # tau -> -tau is the rotation by pi about x: B_-tau(Rx) = -R B_tau(x), R = diag(1, -1, -1)
+    R, x = jnp.array([1., -1., -1.]), jnp.array([.9, .3, .05])
+    assert jnp.allclose(iota2_B(R * x, .5, -.5), -R * iota2_B(x, .5, .5), atol=1e-14)
+    assert jnp.allclose(sheared_B(R * x, 1.2, 1.4, 1.6, -.4), -R * sheared_B(x, 1.2, 1.4, 1.6, .4), atol=1e-14)

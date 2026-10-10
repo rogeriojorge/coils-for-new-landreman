@@ -1,15 +1,17 @@
 """Coils for the sheared-iota analytic MHD equilibria of Landreman (arXiv:2609.26742, section 3): weighted penalties."""
+import sys
 import numpy as np
-from landreman_equilibria import case, sheared_iota_axis, CASES
+from landreman_equilibria import case, CASES, TAU
 from coil_optimization import targets, initial_coils, optimize, report, save_results
 
-""" Equilibrium: A and B from the paper's figure 2, D new (see README); 1 m mean axis radius, 1 T on axis """
-CASE = "D"
+""" Equilibrium: A and B from the paper's figure 2, D and E new (see README), issan_tau(_mirror) from Issan et al.
+    (tau = +-0.4, no stellarator symmetry); case as argument; 1 m mean axis radius, 1 T on axis """
+CASE = sys.argv[1] if len(sys.argv) > 1 else "D"
 eq = case(CASE, major_radius=1.0, B_axis=1.0, inner_fraction=0.25)  # interior field matched at half radius
-print(f"Case {CASE}: (eps, S, k_b, lambda) = {CASES[CASE]}, iota(0) = {sheared_iota_axis(*CASES[CASE][:2]):.4f}")
+print(f"Case {CASE}: (eps, S, k_b, lambda) = {CASES[TAU.get(CASE, (CASE,))[0]]}, iota(0) = {float(eq['iota'](1e-3)):.4f}")
 
 """ Coils and penalties """
-N_COILS, ORDER, N_SEGMENTS, COIL_MINOR_RADIUS = 6, 6, 140, 0.55
+N_COILS, ORDER, N_SEGMENTS, COIL_MINOR_RADIUS = 6 * (2 - eq["stellsym"]), 6, 140, 0.55  # per half period or period
 LIMITS = dict(length=4.5, curvature=5.0, msc=14.0, total_curvature=5 * np.pi, arclength=0.05,
               coil_distance=0.12, surface_distance=0.2)  # m, 1/m, 1/m^2, rad, -, m, m
 WEIGHTS = dict(field=1e4, boundary=1e4, length=1e2, curvature=1e1, msc=1e1, total_curvature=1e1, arclength=1e-2,
@@ -17,7 +19,7 @@ WEIGHTS = dict(field=1e4, boundary=1e4, length=1e2, curvature=1e1, msc=1e1, tota
 MAXITER = 3000
 
 """ Setting up the exact targets and the initial coils (centred on the elliptical axis) """
-t = targets(eq["surface"], eq["B"], eq["inner"])
+t = targets(eq["surface"], eq["B"], eq["inner"], stellsym=eq["stellsym"])
 coils0 = initial_coils(t, N_COILS, ORDER, N_SEGMENTS, 1.0, COIL_MINOR_RADIUS, axis=eq["axis"])
 
 """ Running the optimization """
