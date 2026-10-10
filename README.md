@@ -82,14 +82,15 @@ A 32 × 32 grid at 4 digits is converged to about 1e-6 of |B|.
   balance a free-boundary equilibrium needs.
 
 The engineering limits are:
-- length ≤ 4.5 m and curvature ≤ 5 m⁻¹;
+- length ≤ 6 m and curvature ≤ 5 m⁻¹;
 - mean squared curvature ≤ 14 m⁻²;
 - total curvature ∫κ dl ≤ 5π (each loop adds 2π);
 - arclength variation;
 - coil–coil distance ≥ 0.12 m and coil–plasma distance ≥ 0.2 m;
 - zero linking number.
 
-The coils start as circles, 6 per half period (24 in total), Fourier order 6. For the sheared
+The coils start as circles, Fourier order 6: 3 per half period for ι = 2 and E, 4 for A and D
+(see Fewer coils). For the sheared
 cases they are centred on the elliptical axis. All gradients are exact (JAX).
 
 **Methods.**
@@ -102,15 +103,15 @@ cases they are centred on the elliptical axis. All gradients are exact (JAX).
 
 ## Results
 
-Penalty method, final limits (6 coils per half period, length 4.5 m, curvature 5 m⁻¹, total
-curvature 5π, 3000 iterations, about 10 min each):
+Penalty method, final limits (length 6 m, curvature 5 m⁻¹, total curvature 5π, 3000 iterations,
+about 10 min each):
 
-| case | interior \|ΔB\|/\|B\| mean / max | boundary \|ΔB·n\|/\|B\| mean / max | boundary \|ΔB\|/\|B\| max | max κ (m⁻¹) |
-| --- | --- | --- | --- | --- |
-| ι = 2 | 8.7e-5 / 2.7e-4 | 1.7e-4 / 4.8e-3 | 6.5e-2 | 5.00 |
-| sheared A | 4.8e-4 / 1.5e-3 | 1.8e-3 / 6.1e-3 | 6.6e-3 | 5.13 |
-| sheared D | 6.2e-5 / 1.5e-4 | 1.9e-4 / 7.0e-4 | 7.5e-4 | 5.01 |
-| sheared E | 4.1e-5 / 8.5e-5 | 1.3e-4 / 4.8e-4 | 5.5e-4 | 5.00 |
+| case | coils per half period | interior \|ΔB\|/\|B\| mean / max | boundary \|ΔB·n\|/\|B\| mean / max | boundary \|ΔB\|/\|B\| max | max κ (m⁻¹) |
+| --- | --- | --- | --- | --- | --- |
+| ι = 2 | 3 | 1.9e-4 / 4.8e-4 | 4.0e-4 / 4.3e-3 | 6.6e-2 | 5.01 |
+| sheared A | 4 | 5.0e-4 / 1.1e-3 | 1.6e-3 / 6.0e-3 | 6.0e-3 | 5.05 |
+| sheared D | 4 | 1.8e-4 / 4.5e-4 | 3.9e-4 / 1.8e-3 | 1.8e-3 | 5.01 |
+| sheared E | 3 | 3.1e-4 / 7.2e-4 | 7.2e-4 / 4.0e-3 | 4.4e-3 | 5.02 |
 
 | ι = 2 | sheared A |
 | --- | --- |
@@ -120,12 +121,12 @@ curvature 5π, 3000 iterations, about 10 min each):
 
 Movies of every run: `coils_<case>.gif` and `coils_<case>_al.gif`.
 
-- D and E hold the whole boundary field to better than 0.1%, A to 0.7%.
-- Relaxing the limits, mainly the loop cap (3π → 5π total curvature) together with 6 coils of
-  order 6, cuts the errors 4–20× from the earlier limits below. 8 coils per half period gain only
-  25% more.
+- All four hold the boundary B·n to 0.6% or better with 12–16 coils in total. D holds it to 0.2%.
+- Relaxing the limits, mainly the loop cap (3π → 5π total curvature) and the length (4 → 6 m),
+  is what allows so few coils. Fewer coils still cost some accuracy: 6 coils per half period at
+  4.5 m reach 0.07% for D and E (Fewer coils).
 - For ι = 2, the boundary field error is 6.5% at a few points on the inboard midplane near φ = 0,
-  where |B| is highest, for every coil set tried. The target there is converged to 1e-6, so it is
+  where |B| is highest, for every coil set tried, including 6 coils. The target there is converged to 1e-6, so it is
   a limit of the coils, not of the target. Elsewhere it is below 0.5%.
 - Coil forces are reported, not penalized.
 
@@ -210,22 +211,24 @@ exact interior field (accurate to 1e-11 or better) and fitted smoothly. Each fig
 things: the analytic surfaces (black), the traced field lines (red) and the free-boundary VMEX
 surfaces with the same coils (blue dashed).
 
-| case | coil \|ΔB\|/\|B\| inside | field lines from analytic surfaces, mean / max |
+| case | coils per half period | field lines from analytic surfaces, mean / max |
 | --- | --- | --- |
-| sheared A | 4e-4 – 1.4e-3 | 3.95 / 25.8 mm |
-| sheared D | 4e-5 – 1.8e-4 | 0.63 / 2.29 mm |
-| sheared E | 2.6e-5 – 1.2e-4 | 0.57 / 1.98 mm |
+| sheared A | 4 | 4.4 / 23 mm |
+| sheared D | 4 | 1.0 / 4.8 mm |
+| sheared E | 3 | 0.60 / 2.2 mm |
 
 | | |
 | --- | --- |
 | ![](fieldlines_D.png) | ![](fieldlines_E.png) |
 | ![](fieldlines_A.png) | ![](fieldlines_iota2.png) |
 
-- For D and E the field lines lie on the analytic surfaces to within about 2 mm, with no islands.
+- For D and E the field lines lie on the analytic surfaces to within a few mm, with no islands.
 - For A, the lines near s = 0.7 spread into a band a few cm wide. A has high ι (≈ 5.7) and
   β ≈ 20%, so the remaining 0.1% field error resonates more strongly there.
 - ι = 2 has closed field lines on every surface, so any error breaks the surfaces into short arcs.
-  This is expected.
+  This is expected. Lines started on the boundary leave it (up to 10 cm).
+- With 6 coils per half period the field lines were 0.6 mm (D and E) from the analytic surfaces:
+  the extra coils buy sub-mm field lines, not a visible change in the sections.
 
 **VMEX.** `benchmark_vmex.py` gives VMEX the analytic profiles: toroidal flux, pressure p(s) and
 enclosed current I(s). It runs a fixed-boundary solve on the exact boundary and a free-boundary
@@ -235,21 +238,30 @@ solve with only the coils.
 
 | case | fixed boundary: deviation mean / max, ι error | free boundary (Newton): deviation mean / max, ι error | unstable modes |
 | --- | --- | --- | --- |
-| sheared A | 0.47 / 0.87 mm, 0.28% | 3.9 / 11.4 mm, 0.50% | 8 |
-| sheared D | 0.08 / 0.15 mm, 0.26% | 3.0 / 6.4 mm, 0.44% | 7 |
-| sheared E | 0.09 / 0.16 mm, 0.31% | 2.6 / 4.9 mm, 0.49% | 6 |
+| sheared A | 0.47 / 0.87 mm, 0.28% | 3.8 / 11.1 mm, 0.40% | 8 |
+| sheared D | 0.08 / 0.15 mm, 0.26% | 2.7 / 6.1 mm, 0.40% | 8 |
+| sheared E | 0.09 / 0.16 mm, 0.31% | 2.6 / 3.6 mm, 0.49% | 6 |
 
 Figures for the other cases: `benchmark_A.png`, `benchmark_D.png`.
 
 - Fixed-boundary VMEX reproduces the analytic equilibria.
 - Free-boundary VMEX converges (|F| ≈ 2e-13) within a few mm of the analytic boundary, and ι is
-  within 0.5%. The coil field lines stay much closer than that, within about 2 mm for D and E. The
-  difference is a coherent shift, not a resolution effect. For D, a 256 × 256 mgrid or 64 toroidal
-  planes change it by under 2% (3.03 → 3.02 mm mean, 6.45 → 6.34 mm max), with the same 7 unstable
-  modes. It grows with the coil error (E 4.9 mm, D 6.4 mm, A 11.4 mm), as expected for an unstable
-  equilibrium. Free boundary amplifies small field errors along the unstable directions.
+  within 0.5%. The coil field lines stay closer than that. The difference is a coherent shift, not
+  a resolution effect: for D with 6 coils, a 256 × 256 mgrid or 64 toroidal planes change it by
+  under 2% (3.03 → 3.02 mm mean, 6.45 → 6.34 mm max), with the same unstable modes. Free boundary
+  amplifies small field errors along the unstable directions.
+- The free-boundary shift barely depends on the coil count once the coils are good enough:
+
+  | case | 3 coils | 4 coils | 6 coils |
+  | --- | --- | --- | --- |
+  | sheared D | 3.7 / 9.9 mm | **2.7 / 6.1 mm** | 3.0 / 6.4 mm |
+  | sheared E | **2.6 / 3.6 mm** | 2.6 / 5.1 mm | 2.6 / 4.9 mm |
+
+  *Free-boundary boundary deviation, mean / max. Bold: the default.* With 3 coils D's surfaces
+  visibly shift (about 1 cm at φ = 0), so D uses 4. E is as good with 3. A needs 4 to get B·n
+  below 1%. ι = 2 is not benchmarked; its 3 coils match 6 in B·n.
 - These equilibria are ideal-MHD unstable. The coils' vertical field has decay index
-  n = −(R/B_Z) ∂B_Z/∂R = 2.4–9.5 at the axis, above the 3/2 limit for radial stability of a
+  n = −(R/B_Z) ∂B_Z/∂R up to 2.5–9.5 at the axis, above the 3/2 limit for radial stability of a
   ~300 kA plasma. The coils match the external field closely, so this index belongs to the
   equilibrium. The Newton solve finds 6–8 directions with δW < 0, including the radial shift.
 - [uwplasma/vmex#570](https://github.com/uwplasma/vmex/pull/570) adds vertical-field position

@@ -47,13 +47,13 @@
   },
   "free": {
    "converged": true,
-   "residual": 1.6812660006933021e-13,
+   "residual": 1.6946544341449453e-13,
    "unstable_modes": 8,
-   "beta": 0.19434989588101806,
-   "boundary_deviation_mean_mm": 3.8705606455244888,
-   "boundary_deviation_max_mm": 11.415934446532322,
-   "boundary_deviation_over_minor_radius": 0.09103286605367086,
-   "iota_max_relative_error": 0.005045408995802192
+   "beta": 0.19434094382242478,
+   "boundary_deviation_mean_mm": 3.7957472240363126,
+   "boundary_deviation_max_mm": 11.058058801507894,
+   "boundary_deviation_over_minor_radius": 0.08817909654317094,
+   "iota_max_relative_error": 0.00398581056691838
   }
  },
  "D": {
@@ -104,13 +104,13 @@
   },
   "free": {
    "converged": true,
-   "residual": 1.5442076681724565e-13,
-   "unstable_modes": 7,
-   "beta": 0.07215713503247695,
-   "boundary_deviation_mean_mm": 3.0322150873742397,
-   "boundary_deviation_max_mm": 6.448487276612518,
-   "boundary_deviation_over_minor_radius": 0.053855991995395446,
-   "iota_max_relative_error": 0.0044240116913839556
+   "residual": 2.604046649967099e-13,
+   "unstable_modes": 8,
+   "beta": 0.07216869976013761,
+   "boundary_deviation_mean_mm": 2.705467076444951,
+   "boundary_deviation_max_mm": 6.087626824839116,
+   "boundary_deviation_over_minor_radius": 0.050842184761465015,
+   "iota_max_relative_error": 0.004039182582296519
   }
  },
  "E": {
@@ -161,13 +161,13 @@
   },
   "free": {
    "converged": true,
-   "residual": 2.0955492779385163e-13,
+   "residual": 1.568845187586446e-13,
    "unstable_modes": 6,
-   "beta": 0.06384851678138977,
-   "boundary_deviation_mean_mm": 2.5755328614477415,
-   "boundary_deviation_max_mm": 4.868783124394871,
-   "boundary_deviation_over_minor_radius": 0.036649916453158175,
-   "iota_max_relative_error": 0.004946368257135791
+   "beta": 0.06384469098794368,
+   "boundary_deviation_mean_mm": 2.572380640053079,
+   "boundary_deviation_max_mm": 3.6073641169787285,
+   "boundary_deviation_over_minor_radius": 0.027154545627830387,
+   "iota_max_relative_error": 0.004878298549623183
   }
  }
 }
