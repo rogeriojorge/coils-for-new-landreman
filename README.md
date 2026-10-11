@@ -90,7 +90,7 @@ The engineering limits are:
 - zero linking number.
 
 The coils start as circles, Fourier order 6: 3 per half period for ι = 2 and E, 4 for A and D
-(see Fewer coils). For the sheared
+(see Coil count). For the sheared
 cases they are centred on the elliptical axis. All gradients are exact (JAX).
 
 **Methods.**
@@ -124,7 +124,7 @@ Movies of every run: `coils_<case>.gif` and `coils_<case>_al.gif`.
 - All four hold the boundary B·n to 0.6% or better with 12–16 coils in total. D holds it to 0.2%.
 - Relaxing the limits, mainly the loop cap (3π → 5π total curvature) and the length (4 → 6 m),
   is what allows so few coils. Fewer coils still cost some accuracy: 6 coils per half period at
-  4.5 m reach 0.07% for D and E (Fewer coils).
+  4.5 m reach 0.07% for D and E (Coil count).
 - For ι = 2, the boundary field error is 6.5% at a few points on the inboard midplane near φ = 0,
   where |B| is highest, for every coil set tried, including 6 coils. The target there is converged to 1e-6, so it is
   a limit of the coils, not of the target. Elsewhere it is below 0.5%.
@@ -145,7 +145,42 @@ curvature 4 m⁻¹, total curvature 3π, penalty 1000 iterations):
 The augmented Lagrangian meets every limit exactly and matches the penalty field error for ι = 2
 and D, but takes 5–14× longer. Figures: `coils_<case>_al.png`.
 
-## Parameter scan
+## Coil count
+
+The coil count was chosen in two steps. A first scan used tight limits. A second scan used the
+final limits, where the free-boundary check then settled the count for each case.
+
+### Fewer coils (final limits)
+
+`scan_fewer_coils.py` repeats the final optimization (order 6, curvature ≤ 5 m⁻¹, total curvature
+≤ 5π, 1500 iterations) with 2–4 coils per half period. It lets the coils grow to 4.5 m or 6 m.
+
+![fewer coils](scan_fewer.png)
+
+| case | 2 coils, 6 m | 3 coils, 6 m | 4 coils, 6 m | 6 coils, 4.5 m |
+| --- | --- | --- | --- | --- |
+| ι = 2 | 2.3e-2 | 4.3e-3 | 4.7e-3 | 4.7e-3 |
+| sheared A | 5.1e-2 | 1.3e-2 | 6.1e-3 | 6.1e-3 |
+| sheared D | 1.3e-2 | 5.6e-3 | 2.0e-3 | 8.4e-4 |
+| sheared E | 1.4e-2 | 4.0e-3 | 1.7e-3 | 6.4e-4 |
+
+*Maximum boundary \|ΔB·n\|/\|B\|.*
+
+- **ι = 2:** 3 coils per half period (12 in total) at 6 m match 6 coils. The maximum is set by the
+  inboard spot.
+- **A:** 4 coils at 6 m (16 in total, 96 m of conductor) match 6 coils at 4.5 m (24 coils, 108 m).
+- **D and E:** each coil removed costs about 2.5×. 4 coils at 6 m still hold B·n to 0.2%, and 3
+  coils to 0.4–0.6%.
+- With 2 coils no case gets below 1%.
+- Longer coils matter more as the coil count drops. At 3 coils, going from 4.5 m to 6 m gains
+  1.6–3×.
+
+**Default:** 3 coils per half period for ι = 2 and E, 4 for A and D. A needs 4 to get B·n below
+1%. D needs 4 to keep the free-boundary surfaces on the analytic ones (see Free-boundary VMEX).
+
+The coils of every point are saved as `scan_fewer_<case>_<n>_<length>.json`.
+
+### Earlier limits: count, length, curvature, loop cap
 
 `scan_coils.py` runs the penalty optimization (500 iterations, 5-coil order-4 limits) for:
 - every combination of 3–6 coils per half period, curvature limit 3–5 m⁻¹ and length limit
@@ -173,39 +208,12 @@ and D, but takes 5–14× longer. Figures: `coils_<case>_al.png`.
 
 - **Loop cap (case A):** removing the cap lets the coils reach 1.87·2π, which improves the error
   by only 8% at 5 coils of order 4. Tightening it to 1.25·2π costs 1.4–2×. With 6 coils of order
-  6 the extra freedom pays off: A drops from 4.8% to 0.6% maximum B·n error (Results above), so
+  6 the extra freedom pays off: A drops from 4.8% to 0.6% maximum B·n error (Results), so
   A's earlier floor was set by the coil limits, not by the equilibrium.
 
-### Fewer coils
+## Field lines
 
-`scan_fewer_coils.py` repeats the final optimization (order 6, curvature ≤ 5 m⁻¹, total curvature
-≤ 5π, 1500 iterations) with 2–4 coils per half period. It lets the coils grow to 4.5 m or 6 m.
-
-![fewer coils](scan_fewer.png)
-
-| case | 2 coils, 6 m | 3 coils, 6 m | 4 coils, 6 m | 6 coils, 4.5 m |
-| --- | --- | --- | --- | --- |
-| ι = 2 | 2.3e-2 | 4.3e-3 | 4.7e-3 | 4.7e-3 |
-| sheared A | 5.1e-2 | 1.3e-2 | 6.1e-3 | 6.1e-3 |
-| sheared D | 1.3e-2 | 5.6e-3 | 2.0e-3 | 8.4e-4 |
-| sheared E | 1.4e-2 | 4.0e-3 | 1.7e-3 | 6.4e-4 |
-
-*Maximum boundary \|ΔB·n\|/\|B\|.*
-
-- **ι = 2:** 3 coils per half period (12 in total) at 6 m match 6 coils. The maximum is set by the
-  inboard spot.
-- **A:** 4 coils at 6 m (16 in total, 96 m of conductor) match 6 coils at 4.5 m (24 coils, 108 m).
-- **D and E:** each coil removed costs about 2.5×. 4 coils at 6 m still hold B·n to 0.2%, and 3
-  coils to 0.4–0.6%.
-- With 2 coils no case gets below 1%.
-- Longer coils matter more as the coil count drops. At 3 coils, going from 4.5 m to 6 m gains
-  1.6–3×.
-
-The coils of every point are saved as `scan_fewer_<case>_<n>_<length>.json`.
-
-## Validation
-
-**Field lines.** `validate_fieldlines.py` traces field lines of B + (B_coils,ESSOS − B_coils,exact).
+`validate_fieldlines.py` traces field lines of B + (B_coils,ESSOS − B_coils,exact).
 The plasma currents are held at their analytic values. The coil-field error is tabulated against the
 exact interior field (accurate to 1e-11 or better) and fitted smoothly. Each figure overlays three
 things: the analytic surfaces (black), the traced field lines (red) and the free-boundary VMEX
@@ -230,7 +238,9 @@ surfaces with the same coils (blue dashed).
 - With 6 coils per half period the field lines were 0.6 mm (D and E) from the analytic surfaces:
   the extra coils buy sub-mm field lines, not a visible change in the sections.
 
-**VMEX.** `benchmark_vmex.py` gives VMEX the analytic profiles: toroidal flux, pressure p(s) and
+## Free-boundary VMEX
+
+`benchmark_vmex.py` gives VMEX the analytic profiles: toroidal flux, pressure p(s) and
 enclosed current I(s). It runs a fixed-boundary solve on the exact boundary and a free-boundary
 solve with only the coils.
 
@@ -269,7 +279,13 @@ Figures for the other cases: `benchmark_A.png`, `benchmark_D.png`.
 - ι = 2 is not benchmarked: with ι exactly 2 everywhere, every field line closes on itself, and
   VMEC cannot converge to that with pressure.
 
-**Newton vs descent.** VMEX's default solver is steepest descent on the MHD energy, and it should
+VMEC sign conventions matter here. PHIEDGE must be +Φ (B along +φ) and curtor +I. VMEC2000 stops
+on the wrong sign; VMEX did not, which [uwplasma/vmex#571](https://github.com/uwplasma/vmex/pull/571)
+fixes. NZETA must be at least 2·NTOR + 4.
+
+## Newton solver
+
+VMEX's default solver is steepest descent on the MHD energy, and it should
 stay the default. It is robust from a cold start, compiles fast and uses little memory. It cannot
 settle on an unstable equilibrium, though: these free-boundary runs drift instead of converging.
 `vmex_newton.free_boundary_newton(inp, coils, grid)` takes over in that case:
@@ -284,9 +300,8 @@ it from a converged descent state; from cold, or from 1e-4, it is fragile. It co
 compile time and 1.5–3× the memory. Its converged equilibrium may be a saddle of the MHD energy,
 so check the returned unstable-mode count.
 
-VMEC sign conventions matter here. PHIEDGE must be +Φ (B along +φ) and curtor +I. VMEC2000 stops
-on the wrong sign; VMEX did not, which [uwplasma/vmex#571](https://github.com/uwplasma/vmex/pull/571)
-fixes. NZETA must be at least 2·NTOR + 4.
+Upstreamed as an opt-in VMEX feature in
+[uwplasma/vmex#575](https://github.com/uwplasma/vmex/pull/575) (`vmex.solve_free_boundary_newton`).
 
 ## Reproducing
 
@@ -314,7 +329,8 @@ Peak memory is about 10 GB, mostly in the virtual-casing step. Run the scripts o
   adds a virtual-casing coil example.
 - **VMEX**: wrong-sign PHIEDGE check
   ([uwplasma/vmex#571](https://github.com/uwplasma/vmex/pull/571)) and free-boundary position
-  control ([uwplasma/vmex#570](https://github.com/uwplasma/vmex/pull/570)).
+  control ([uwplasma/vmex#570](https://github.com/uwplasma/vmex/pull/570)), and the opt-in
+  Newton free-boundary solver ([uwplasma/vmex#575](https://github.com/uwplasma/vmex/pull/575)).
 
 ## Reference
 
