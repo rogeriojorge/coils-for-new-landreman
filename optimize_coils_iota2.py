@@ -10,8 +10,8 @@ CASE = sys.argv[1] if len(sys.argv) > 1 else "iota2"
 eq = case(CASE, major_radius=1.0, B_axis=1.0, inner_fraction=0.25)  # interior field matched at half radius
 
 """ Coils and penalties """
-N_COILS, ORDER, N_SEGMENTS, COIL_MINOR_RADIUS = 6 * (2 - eq["stellsym"]), 6, 140, 0.55  # per half period or period
-LIMITS = dict(length=4.5, curvature=5.0, msc=14.0, total_curvature=5 * np.pi, arclength=0.05,
+N_COILS, ORDER, N_SEGMENTS, COIL_MINOR_RADIUS = 3 if eq["stellsym"] else 12, 6, 140, 0.55  # 12 per period without symmetry
+LIMITS = dict(length=6.0 if eq["stellsym"] else 4.5, curvature=5.0, msc=14.0, total_curvature=5 * np.pi, arclength=0.05,
               coil_distance=0.12, surface_distance=0.2)  # m, 1/m, 1/m^2, rad, -, m, m
 WEIGHTS = dict(field=1e4, boundary=1e4, length=1e2, curvature=1e1, msc=1e1, total_curvature=1e1, arclength=1e-2,
                coil_distance=1e3, surface_distance=1e3, linking=1e1)
