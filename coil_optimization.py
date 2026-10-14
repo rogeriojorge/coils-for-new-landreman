@@ -12,10 +12,11 @@ from essos.objective_functions import (loss_coil_separation, loss_coil_surface_d
 from landreman_equilibria import NFP, boundary_target, coil_field, fit_surface
 
 
-def targets(surface, B, inner_surface, ntheta=24, nzeta=16, quadrature=(192, 4608), nbn=32, digits=4):
-    """Exact coil field at interior points (on inner_surface) and on the exact boundary (virtual casing)."""
+def targets(surface, B, inner_surface, ntheta=24, nzeta=16, quadrature=(192, 4608), nbn=32, digits=4, stellsym=True):
+    """Exact coil field at interior points (on inner_surface) and on the exact boundary (virtual casing).
+    Stellarator symmetry needs half a field period; without it, a full one."""
     theta, zeta = (a.ravel() for a in jnp.meshgrid(jnp.linspace(0, 2 * jnp.pi, ntheta, endpoint=False),
-                                                    jnp.linspace(0, jnp.pi / NFP, nzeta)))
+                                                    jnp.linspace(0, (2 - stellsym) * jnp.pi / NFP, (2 - stellsym) * nzeta)))
     points = jax.vmap(inner_surface)(theta, zeta)
     B_points = jnp.linalg.norm(jax.vmap(B)(points), axis=1)
     t0 = time.time()
@@ -29,21 +30,21 @@ def targets(surface, B, inner_surface, ntheta=24, nzeta=16, quadrature=(192, 460
     print(f"Boundary target by virtual casing ({digits} digits): max|B_coils.n|/B = "
           f"{jnp.max(jnp.abs(jnp.sum(B_ext_b * normal_b, -1)) / B_b):.3e}")
     return dict(points=points, B_target=B_target, B_points=B_points, gamma_b=gamma_b, normal_b=normal_b,
-                B_ext_b=B_ext_b, B_b=B_b, half=nbn // 2,  # stellarator symmetry: half a period suffices
+                B_ext_b=B_ext_b, B_b=B_b, half=nbn // (1 + stellsym), stellsym=stellsym,
                 plasma=fit_surface(surface, 12, 12, range_torus="full torus"))
 
 
 def initial_coils(t, n_coils, order, n_segments, major_radius, minor_radius, axis=None):
     """Circular coils (centred on an elliptical axis with semi-axes `axis`) with the least-squares common current."""
     curves = CreateEquallySpacedCurves(n_coils, order, major_radius, minor_radius,
-                                       n_segments=n_segments, nfp=NFP, stellsym=True)
+                                       n_segments=n_segments, nfp=NFP, stellsym=t["stellsym"])
     if axis is not None:
         angle = jnp.arctan2(curves.dofs[:, 1, 0], curves.dofs[:, 0, 0])
         curves = curves.with_dofs(curves.dofs.at[:, 0, 0].set(axis[0] * jnp.cos(angle))
                                              .at[:, 1, 0].set(axis[1] * jnp.sin(angle)))
     B_unit = jax.vmap(BiotSavart(Coils(curves, jnp.ones(n_coils))).B)(t["points"])
     current = jnp.vdot(B_unit, t["B_target"]) / jnp.vdot(B_unit, B_unit)
-    print(f"Initial coils: {n_coils} per half period, order {order}, common current {current:.4e} A")
+    print(f"Initial coils: {n_coils} per {'half ' * t['stellsym']}period, order {order}, common current {current:.4e} A")
     return Coils(curves, current * jnp.ones(n_coils))
 
 

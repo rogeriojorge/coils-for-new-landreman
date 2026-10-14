@@ -25,6 +25,8 @@ python scan_coils.py                                        # coil count / curva
 python scan_fewer_coils.py                                  # 2-4 coils per half period at the final limits
 python benchmark_vmex.py                                    # fixed- and free-boundary (Newton) VMEX vs the analytic solution
 python validate_fieldlines.py                               # field lines with the coils vs the analytic surfaces
+python optimize_coils_iota2.py iota2_tau                    # no stellarator symmetry (also _mirror, issan_tau)
+python check_tau_coils.py                                   # fine-target errors and mirror check
 pytest -q                                                   # machine-precision checks of the equilibria
 ```
 
@@ -302,6 +304,44 @@ so check the returned unstable-mode count.
 
 Upstreamed as an opt-in VMEX feature in
 [uwplasma/vmex#575](https://github.com/uwplasma/vmex/pull/575) (`vmex.solve_free_boundary_newton`).
+
+## `vmex --plot` and alpha losses
+
+![vmex --plot, case E](vmex_plot_E.png)
+
+![Alpha losses, case E](alpha_losses_E.png)
+
+*Case E held by the coils (free-boundary VMEX), scaled to ARIES-CS size: 33.0 ± 2.1 % of 500 alphas from
+s = 0.25 are lost in 10 ms, almost all deeply trapped (|v∥/v| < 0.5), mostly within 3 ms, at two helical
+stripes per period. Energy is conserved to 1e-4. `vmex wout_free_E.nc --plot --trace`.*
+
+## Without stellarator symmetry
+
+[Issan et al., arXiv:2610.07304](https://arxiv.org/abs/2610.07304) add a parameter τ to both families
+that breaks stellarator symmetry; τ → −τ is a rotation by π about x with B reversed. Cases `iota2_tau`
+(τ = 0.5) and `issan_tau` (τ = 0.4), and their mirrors, follow
+[vmex-benchmark-analytical](https://github.com/rogeriojorge/vmex-benchmark-analytical). Coils cover a full
+period (12 coils, `stellsym=False`, length ≤ 4.5 m); ESSOS and virtual casing needed no change.
+
+| case | boundary B·n/\|B\| mean / max | interior \|ΔB\|/\|B\| mean / max | max κ (m⁻¹) |
+| --- | --- | --- | --- |
+| `iota2_tau` | 1.4e-4 / 6.0e-4 | 7.3e-5 / 2.5e-4 | 5.00 |
+| `iota2_tau_mirror` | 1.1e-4 / 5.0e-4 | 4.9e-5 / 1.4e-4 | 5.00 |
+| `issan_tau` | 3.8e-4 / 3.2e-3 | 1.0e-4 / 5.6e-4 | 5.01 |
+| `issan_tau_mirror` | 3.7e-4 / 3.1e-3 | 1.0e-4 / 4.7e-4 | 5.01 |
+
+| ι = 2, τ = 0.5 | sheared, τ = 0.4 |
+| --- | --- |
+| ![](coils_iota2_tau.png) | ![](coils_sheared_issan_tau.png) |
+
+- **Mirror check.** The τ coils rotated by π about x, currents reversed, give the τ error on the −τ target to
+  every printed digit (`check_tau_coils.py`, `tau_results.json`).
+- **Free boundary does not converge, and not because of the asymmetry.** The symmetric ι = 2 case fails the
+  same way with and without `LASYM`, and case D forced through `LASYM = T` converges to 2e-13. Constant
+  rational ι = 2 is the obstacle; `issan_tau` needs more modes than the dense Newton solve allows
+  (`benchmark_iota2_tau.png`, `benchmark_issan_tau.png`).
+- **Vacuum.** Neither family has a zero-pressure member, so the coils match the finite-β exterior field;
+  p = 0 at fixed current moves the boundary 1-3 cm.
 
 ## Reproducing
 

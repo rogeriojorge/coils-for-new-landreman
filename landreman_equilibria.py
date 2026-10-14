@@ -1,7 +1,9 @@
 """Landreman's explicit non-axisymmetric MHD equilibria (arXiv:2609.26742) in JAX.
 
-Two families with exact nested flux surfaces, two field periods and stellarator symmetry:
-``iota2_*`` (uniform transform iota = 2) and ``sheared_*`` (sheared transform). Every
+Two families with exact nested flux surfaces and two field periods:
+``iota2_*`` (uniform transform iota = 2) and ``sheared_*`` (sheared transform). The parameter tau of
+Issan et al. (arXiv:2610.07304) breaks stellarator symmetry; tau -> -tau is the image under the rotation by pi
+about the x axis, (x, y, z) -> (x, -y, -z), with B reversed. Every
 function is pure ``jax.numpy``, so fields, currents ``curl B``, pressure gradients and
 boundary shapes are differentiable in position and in the family parameters.
 Lengths and fields are in the paper's normalized units; ``coil_target`` takes the
@@ -18,52 +20,54 @@ MU0 = 4e-7 * np.pi
 
 
 # ---------------- family 1: iota = 2 (section 2 of the paper) ----------------
-def iota2_B(x, eps):
-    """Eq. (2.2): B(x) = A B0(A^-1 x) with A = diag(sqrt(1+eps), sqrt(1-eps), 1)."""
+def iota2_B(x, eps, tau=0.):
+    """Eq. (2.2): B(x) = A B0(A^-1 x) with A = diag(sqrt(1+eps), sqrt(1-eps), 1); tau from Issan et al."""
     a, b = jnp.sqrt(1 + eps), jnp.sqrt(1 - eps)
     s = x[0]**2 / a**2 + x[1]**2 / b**2
-    F = jnp.sqrt(1 - (1 - s)**2 - 4 * x[2]**2)
-    return jnp.array([(2 * x[2] * x[0] - a / b * F * x[1]) / s,
-                      (2 * x[2] * x[1] + b / a * F * x[0]) / s, 1 - s])
+    F = jnp.sqrt(1 - (1 - s)**2 - 4 * x[2]**2 - 4 * tau * s * x[2])
+    return jnp.array([((2 * x[2] + tau * s) * x[0] - a / b * F * x[1]) / s,
+                      ((2 * x[2] + tau * s) * x[1] + b / a * F * x[0]) / s, 1 - s - 2 * tau * x[2]])
 
 
-def iota2_psi(x, eps):
-    """Eq. (2.4): flux label, zero on the axis; pressure p = p_a - 2 psi."""
-    return (x[0]**2 + x[1]**2 + 4 * x[2]**2 + jnp.sum(iota2_B(x, eps)**2) - 2 + eps**2) / 4
+def iota2_psi(x, eps, tau=0.):
+    """Eq. (2.4): flux label, zero on the axis; pressure p = p_a - 2 psi / (1 - tau^2)."""
+    w = 1 - tau**2
+    H = (w * (x[0]**2 + x[1]**2 + 4 * x[2]**2) + jnp.sum(iota2_B(x, eps, tau)**2)) / 2 + 2 * tau * x[2]
+    return w * (H - 1 + w * eps**2 / 2 + tau**2 / (2 * w)) / 2
 
 
-def iota2_surface(theta, zeta, eps, psi):
+def iota2_surface(theta, zeta, eps, psi, tau=0.):
     """Eqs. (2.9)-(2.10), (2.14): point on the surface psi. The field-line label alpha = theta + 2 zeta
     untwists the iota = 2 winding, so theta is a poloidal angle (smooth, near-orthogonal grid)."""
-    alpha = theta + 2 * zeta
-    u, v = -eps / 2 + jnp.sqrt(psi) * jnp.cos(alpha), jnp.sqrt(psi) * jnp.sin(alpha)
+    alpha, w = theta + 2 * zeta, 1 - tau**2
+    u, v = -w * eps / 2 + jnp.sqrt(psi) * jnp.cos(alpha), jnp.sqrt(psi) * jnp.sin(alpha)
     L = jnp.sqrt((1 + jnp.sqrt(1 - 4 * (u**2 + v**2))) / 2)
-    c, s = jnp.cos(zeta), jnp.sin(zeta)
-    return jnp.array([jnp.sqrt(1 + eps) * (L * c + (u * c + v * s) / L),
-                      jnp.sqrt(1 - eps) * (L * s + (v * c - u * s) / L),
-                      v * jnp.cos(2 * zeta) - u * jnp.sin(2 * zeta)])
+    c, s, z2 = jnp.cos(zeta), jnp.sin(zeta), 2 * zeta + jnp.arcsin(tau)
+    return jnp.array([jnp.sqrt(1 + eps) * (L * c + (u * c + v * s) / L) / jnp.sqrt(w),
+                      jnp.sqrt(1 - eps) * (L * s + (v * c - u * s) / L) / jnp.sqrt(w),
+                      (v * jnp.cos(z2) - u * jnp.sin(z2) - tau / 2) / w])
 
 
 # ---------------- family 2: sheared iota (section 3 of the paper) ----------------
-def sheared_B(x, eps, S, lam):
+def sheared_B(x, eps, S, lam, tau=0.):
     """Eqs. (3.1)-(3.2), with the principal square root (positive real part)."""
     w = jnp.conj(x[0] + 1j * x[1])
     K = w * jnp.sqrt(1 + eps / w**2)
-    Xi = jnp.conj(w) * K + jnp.pi / 2 - S
+    Xi = jnp.conj(w) * K + jnp.pi / 2 - S + 1j * tau
     phase = jnp.exp(-1j * lam * x[2])
     Bxy = phase * 1j * jnp.sin(Xi) / (2 * K)
     return jnp.array([Bxy.real, Bxy.imag, jnp.real(phase * jnp.cos(Xi)) / lam])
 
 
-def sheared_psi(x, eps, S, lam):
+def sheared_psi(x, eps, S, lam, tau=0.):
     """Eq. (3.3): psi = (X^2 + Y^2)/2 with X = lam B_z, Y = -sin(lam z)."""
-    return ((lam * sheared_B(x, eps, S, lam)[2])**2 + jnp.sin(lam * x[2])**2) / 2
+    return ((lam * sheared_B(x, eps, S, lam, tau)[2])**2 + jnp.sin(lam * x[2])**2) / 2
 
 
-def sheared_surface(theta, zeta, eps, S, lam, k):
+def sheared_surface(theta, zeta, eps, S, lam, k, tau=0.):
     """Eqs. (3.15)-(3.21): point on the surface psi = k^2/2 at angles (chi = theta, zeta)."""
     X, Y = -k * jnp.cos(theta), k * jnp.sin(theta)
-    nu = eps / 2 * jnp.sin(2 * zeta)
+    nu = eps / 2 * jnp.sin(2 * zeta) + tau
     sigma = (S + jnp.arctan(jnp.tanh(nu) * Y / jnp.sqrt(1 - Y**2))
              - jnp.arcsin(X / jnp.sqrt(jnp.cosh(nu)**2 - Y**2)))
     h = jnp.sqrt(4 * sigma**2 + eps**2)
@@ -71,10 +75,10 @@ def sheared_surface(theta, zeta, eps, S, lam, k):
                       jnp.sqrt((h + eps) / 2) * jnp.sin(zeta), -jnp.arcsin(Y) / lam])
 
 
-def sheared_iota(eps, S, k, turns=40, n=4000):
+def sheared_iota(eps, S, k, turns=40, n=4000, tau=0.):
     """Eq. (3.28): iota on the surface psi = k^2/2, by RK4 integration of d chi / d zeta over many transits."""
     def rhs(chi, z):
-        nu, X, Y = eps / 2 * jnp.sin(2 * z), -k * jnp.cos(chi), k * jnp.sin(chi)
+        nu, X, Y = eps / 2 * jnp.sin(2 * z) + tau, -k * jnp.cos(chi), k * jnp.sin(chi)
         sigma = (S + jnp.arctan(jnp.tanh(nu) * Y / jnp.sqrt(1 - Y**2))
                  - jnp.arcsin(X / jnp.sqrt(jnp.cosh(nu)**2 - Y**2)))
         G = (jnp.sqrt(4 * sigma**2 + eps**2) + eps * jnp.cos(2 * z)) / 2
@@ -172,7 +176,7 @@ def flux_profiles(eq, rho, ntheta=64, nquad=24):
 
 
 def boundary_fourier(surface, mpol, ntor, ntheta=64, nphi=64):
-    """Stellarator-symmetric VMEC tables rbc, zbs [n + ntor, m] of surface(theta, zeta) in the cylindrical angle."""
+    """VMEC tables rbc, zbs, rbs, zbc [n + ntor, m] of surface(theta, zeta) in the cylindrical angle."""
     gamma = boundary(surface, ntheta, nphi)[0]
     R, Z = jnp.hypot(gamma[..., 0], gamma[..., 1]), gamma[..., 2]
     theta = jnp.linspace(0, 2 * jnp.pi, ntheta, endpoint=False)
@@ -181,43 +185,50 @@ def boundary_fourier(surface, mpol, ntor, ntheta=64, nphi=64):
     angle = m[None, :, None, None] * theta - NFP * n[:, None, None, None] * phi[:, None]
     weight = jnp.where((m[None] == 0) & (n[:, None] == 0), 1.0, 2.0) / (ntheta * nphi)
     keep = (m[None] > 0) | (n[:, None] >= 0)
-    return (jnp.where(keep, weight * jnp.sum(R * jnp.cos(angle), axis=(-2, -1)), 0),
-            jnp.where(keep, weight * jnp.sum(Z * jnp.sin(angle), axis=(-2, -1)), 0))
+    return tuple(jnp.where(keep, weight * jnp.sum(X * f(angle), axis=(-2, -1)), 0)
+                 for X, f in ((R, jnp.cos), (Z, jnp.sin), (R, jnp.sin), (Z, jnp.cos)))
 
 
 def fit_surface(surface, mpol, ntor, ntheta=64, nphi=64, **kwargs):
     """Fourier fit of surface(theta, zeta) as an ESSOS SurfaceRZFourier (distances, plots)."""
-    return surfacerzfourier_from_boundary(*boundary_fourier(surface, mpol, ntor, ntheta, nphi), NFP, **kwargs)
+    rbc, zbs, rbs, zbc = boundary_fourier(surface, mpol, ntor, ntheta, nphi)
+    return surfacerzfourier_from_boundary(rbc, zbs, NFP, rbs=rbs, zbc=zbc, **kwargs)
 
 
 # ---------------- cases used for coils, scaled to physical units ----------------
 CASES = dict(iota2=(0.5, 1 / 64),  # eps, psi_edge (paper figure 1)
              A=(1.08, 3.0, 0.7, 3.5), B=(4.0, 3.5, 0.7, 3.5),  # eps, S, k_b, lambda (paper figure 2)
              D=(1.0, 2.0, 0.5, 3.5),  # new: foci (0, +-sqrt(eps)) far from the plasma
-             E=(1.0, 1.75, 0.5, 3.5))  # like D, iota 3.43-3.49 away from the iota = 4 resonance
+             E=(1.0, 1.75, 0.5, 3.5),  # like D, iota 3.43-3.49 away from the iota = 4 resonance
+             issan=(1.2, 1.4, np.sqrt(0.28), 1.6))  # sheared_issan of vmex-benchmark-analytical
+TAU = dict(iota2_tau=("iota2", 0.5), iota2_tau_mirror=("iota2", -0.5),  # Issan et al. (arXiv:2610.07304)
+           issan_tau=("issan", 0.4), issan_tau_mirror=("issan", -0.4))
 
 
 def case(name, major_radius=1.0, B_axis=1.0, inner_fraction=0.25):
     """Field, boundary, interior target surface (psi = inner_fraction psi_edge) and axis semi-axes of a case,
     scaled to a mean axis radius `major_radius` (m) and |B| = `B_axis` (T) on the axis at phi = 0."""
-    if name == "iota2":
-        eps, psi = CASES[name]
-        L = major_radius / np.sqrt(1 - eps**2)
-        b = B_axis / jnp.linalg.norm(iota2_B(iota2_surface(0., 0., eps, 0.), eps))
-        return dict(B=lambda x: b * iota2_B(x / L, eps), axis=None, title="ι = 2, ε = 1/2",
-                    surface=lambda t, z: L * iota2_surface(t, z, eps, psi),
-                    inner=lambda t, z: L * iota2_surface(t, z, eps, inner_fraction * psi),
-                    family=lambda t, z, rho: L * iota2_surface(t, z, eps, rho**2 * psi),  # rho^2 = psi/psi_edge
-                    pressure=lambda rho: b**2 / MU0 * 2 * psi * (1 - rho**2),  # Pa, zero at the edge
-                    iota=lambda rho: 2.0 + 0 * rho)
-    eps, S, k, lam = CASES[name]
+    base, tau = TAU.get(name, (name, 0.))
+    suffix = f", τ = {tau:g}" if tau else ""
+    if base == "iota2":
+        eps, psi = CASES[base]
+        L = major_radius * np.sqrt(1 - tau**2) / np.sqrt(1 - eps**2)
+        b = B_axis / jnp.linalg.norm(iota2_B(iota2_surface(0., 0., eps, 0., tau), eps, tau))
+        return dict(B=lambda x: b * iota2_B(x / L, eps, tau), axis=None, title="ι = 2, ε = 1/2" + suffix,
+                    surface=lambda t, z: L * iota2_surface(t, z, eps, psi, tau),
+                    inner=lambda t, z: L * iota2_surface(t, z, eps, inner_fraction * psi, tau),
+                    family=lambda t, z, rho: L * iota2_surface(t, z, eps, rho**2 * psi, tau),  # rho^2 = psi/psi_edge
+                    pressure=lambda rho: b**2 / MU0 * 2 * psi * (1 - rho**2) / (1 - tau**2),  # Pa, zero at the edge
+                    iota=lambda rho: 2.0 + 0 * rho, stellsym=tau == 0)
+    eps, S, k, lam = CASES[base]
     h = np.sqrt(4 * S**2 + eps**2)
     L = 2 * major_radius / (np.sqrt((h - eps) / 2) + np.sqrt((h + eps) / 2))  # axis semi-axes, eq. (3.27)
-    b = B_axis / jnp.linalg.norm(sheared_B(sheared_surface(0., 0., eps, S, lam, 0.), eps, S, lam))
-    return dict(B=lambda x: b * sheared_B(x / L, eps, S, lam), title=f"sheared ι, case {name}",
+    b = B_axis / jnp.linalg.norm(sheared_B(sheared_surface(0., 0., eps, S, lam, 0., tau), eps, S, lam, tau))
+    return dict(B=lambda x: b * sheared_B(x / L, eps, S, lam, tau), title=f"sheared ι, case {base}" + suffix,
+                stellsym=tau == 0,
                 axis=(L * np.sqrt((h - eps) / 2), L * np.sqrt((h + eps) / 2)),
-                surface=lambda t, z: L * sheared_surface(t, z, eps, S, lam, k),
-                inner=lambda t, z: L * sheared_surface(t, z, eps, S, lam, np.sqrt(inner_fraction) * k),
-                family=lambda t, z, rho: L * sheared_surface(t, z, eps, S, lam, rho * k),  # rho^2 = psi/psi_edge
+                surface=lambda t, z: L * sheared_surface(t, z, eps, S, lam, k, tau),
+                inner=lambda t, z: L * sheared_surface(t, z, eps, S, lam, np.sqrt(inner_fraction) * k, tau),
+                family=lambda t, z, rho: L * sheared_surface(t, z, eps, S, lam, rho * k, tau),  # rho^2 = psi/psi_edge
                 pressure=lambda rho: b**2 / MU0 * k**2 / 2 * (1 - rho**2) / lam**2,  # Pa, zero at the edge
-                iota=lambda rho: sheared_iota(eps, S, rho * k))
+                iota=lambda rho: sheared_iota(eps, S, rho * k, tau=tau))
